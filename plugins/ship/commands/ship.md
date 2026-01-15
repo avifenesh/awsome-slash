@@ -1,6 +1,7 @@
 ---
 description: Complete PR workflow from commit to production with validation
-argument-hint: "[--strategy STRATEGY] [--skip-tests] [--dry-run]"
+argument-hint: "[--strategy STRATEGY] [--skip-tests] [--dry-run] [--state-file PATH]"
+allowed-tools: Bash(git:*), Bash(gh:*), Bash(npm:*), Bash(node:*), Read, Write, Edit, Glob, Grep, Task
 ---
 
 # /ship - Complete PR Workflow
@@ -15,6 +16,43 @@ Parse from $ARGUMENTS:
 - **--strategy**: Merge strategy: `squash` (default) | `merge` | `rebase`
 - **--skip-tests**: Skip test validation (dangerous, not recommended)
 - **--dry-run**: Show what would happen without executing
+- **--state-file**: Path to workflow state file (for integration with /next-task)
+
+## State Integration (Optional)
+
+When called with `--state-file`, integrates with workflow state for resume capability:
+
+```javascript
+const args = '$ARGUMENTS'.split(' ');
+const stateFileIdx = args.indexOf('--state-file');
+const stateFilePath = stateFileIdx >= 0 ? args[stateFileIdx + 1] : null;
+
+let workflowState = null;
+if (stateFilePath) {
+  workflowState = require('${CLAUDE_PLUGIN_ROOT}/lib/state/workflow-state.js');
+  const state = workflowState.readState();
+
+  if (state) {
+    console.log(`Workflow: ${state.workflow.id}`);
+    console.log(`Task: #${state.task?.id} - ${state.task?.title}`);
+    console.log(`Current phase: ${state.phases?.current}`);
+
+    // Skip phases already completed
+    const completedPhases = state.phases?.history?.map(h => h.phase) || [];
+    console.log(`Completed phases: ${completedPhases.join(', ')}`);
+  }
+}
+
+// Helper to update state at each phase
+function updatePhase(phase, result) {
+  if (workflowState) {
+    workflowState.startPhase(phase);
+    if (result) {
+      workflowState.completePhase(result);
+    }
+  }
+}
+```
 
 ## Phase 1: Pre-flight Checks
 
@@ -154,6 +192,15 @@ else
 fi
 ```
 
+```javascript
+// Update state with commit info
+updatePhase('ship-prep', {
+  committed: true,
+  commitSha: COMMIT_SHA,
+  branch: CURRENT_BRANCH
+});
+```
+
 ## Phase 3: Create Pull Request
 
 ### Push Branch
@@ -210,6 +257,26 @@ PR_NUMBER=$(echo $PR_URL | grep -oP '/pull/\K\d+')
 echo "✓ Created PR #$PR_NUMBER: $PR_URL"
 ```
 
+```javascript
+// Update state with PR info
+updatePhase('create-pr', {
+  prNumber: PR_NUMBER,
+  prUrl: PR_URL,
+  baseBranch: MAIN_BRANCH
+});
+
+if (workflowState) {
+  workflowState.updateState({
+    pr: {
+      number: PR_NUMBER,
+      url: PR_URL,
+      ciStatus: 'pending',
+      reviewState: 'pending'
+    }
+  });
+}
+```
+
 ## Phase 4: Wait for CI
 
 Platform-adaptive CI monitoring:
@@ -235,6 +302,20 @@ if [ "$CI_PLATFORM" = "github-actions" ]; then
     exit 1
   fi
 fi
+```
+
+```javascript
+// Update state with CI status
+updatePhase('ci-wait', {
+  ciPlatform: CI_PLATFORM,
+  passed: CI_STATUS === 0
+});
+
+if (workflowState) {
+  workflowState.updateState({
+    pr: { ciStatus: CI_STATUS === 0 ? 'passed' : 'failed' }
+  });
+}
 ```
 
 ### GitLab CI
@@ -518,6 +599,22 @@ git pull origin $MAIN_BRANCH
 
 MERGE_SHA=$(git rev-parse HEAD)
 echo "✓ Main branch at: $MERGE_SHA"
+```
+
+```javascript
+// Update state with merge info
+updatePhase('merge', {
+  merged: true,
+  mergeSha: MERGE_SHA,
+  strategy: STRATEGY
+});
+
+if (workflowState) {
+  workflowState.updateState({
+    pr: { reviewState: 'merged' },
+    git: { currentSha: MERGE_SHA }
+  });
+}
 ```
 
 ## Phase 7: Deploy to Development (Conditional)
@@ -1025,6 +1122,20 @@ ${WORKFLOW === 'dev-prod' ? `- Development Deploy: ${DEV_DEPLOY_TIME}\n- Product
 ---
 
 ✓ Successfully shipped to production!
+```
+
+```javascript
+// Update state with completion
+if (workflowState) {
+  workflowState.completePhase({
+    shipped: true,
+    prNumber: PR_NUMBER,
+    mergeSha: MERGE_SHA,
+    devUrl: DEV_URL,
+    prodUrl: PROD_URL,
+    duration: TOTAL_DURATION
+  });
+}
 ```
 
 ## Error Handling
