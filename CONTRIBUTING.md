@@ -85,15 +85,49 @@ node lib/platform/verify-tools.js
 ```
 awsome-claude-slash/
 ├── .claude-plugin/      # Plugin manifest
-├── commands/            # Slash command definitions
-├── lib/
+├── lib/                 # CANONICAL shared libraries (edit here!)
 │   ├── platform/        # Platform detection
-│   ├── validators/      # Validation utilities
 │   ├── patterns/        # Pattern libraries
 │   └── utils/           # Helper utilities
-├── tests/               # Test suite
+├── plugins/             # Individual plugins
+│   ├── deslop-around/
+│   │   ├── .claude-plugin/
+│   │   ├── commands/
+│   │   └── lib/         # Copy of shared lib (DO NOT edit directly)
+│   ├── next-task/
+│   ├── pr-merge/
+│   ├── project-review/
+│   └── ship/
+├── adapters/            # Codex/OpenCode adapters
+├── scripts/             # Developer tools
 └── docs/                # Documentation
 ```
+
+### Library Architecture (IMPORTANT!)
+
+Claude Code installs each plugin separately, so each plugin needs its own `lib/` directory. To avoid maintaining 5 copies manually:
+
+- **`lib/`** (root) = **Canonical source** - always edit files here
+- **`plugins/*/lib/`** = Copies for installation - never edit directly
+
+**When you modify any file in `lib/`:**
+
+```bash
+# 1. Edit files in lib/ (the root directory)
+vim lib/platform/detect-platform.js
+
+# 2. Sync changes to all plugins
+./scripts/sync-lib.sh
+
+# 3. Commit BOTH the source and copies
+git add lib/ plugins/*/lib/
+git commit -m "fix(lib): your change description"
+```
+
+**Why this matters:**
+- If you edit `plugins/ship/lib/detect-platform.js` directly, your changes will be lost next time someone runs `sync-lib.sh`
+- All 5 plugins must have identical lib files
+- The sync script ensures consistency
 
 ## Coding Standards
 
