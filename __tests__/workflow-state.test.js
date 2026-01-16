@@ -83,6 +83,31 @@ describe('workflow-state', () => {
       const stateDir = path.join(testDir, '.claude');
       expect(fs.existsSync(stateDir)).toBe(true);
     });
+
+    it('should return Error for corrupted JSON file', () => {
+      const statePath = path.join(testDir, '.claude', 'workflow-state.json');
+      fs.mkdirSync(path.dirname(statePath), { recursive: true });
+      fs.writeFileSync(statePath, '{invalid json content}');
+
+      const result = workflowState.readState(testDir);
+
+      expect(result).toBeInstanceOf(Error);
+      expect(result.code).toBe('ERR_STATE_CORRUPTED');
+      expect(result.message).toContain('Corrupted workflow state');
+    });
+
+    it('should distinguish between missing and corrupted files', () => {
+      const missingResult = workflowState.readState(testDir);
+      expect(missingResult).toBeNull();
+
+      const statePath = path.join(testDir, '.claude', 'workflow-state.json');
+      fs.mkdirSync(path.dirname(statePath), { recursive: true });
+      fs.writeFileSync(statePath, 'not valid json at all');
+
+      const corruptedResult = workflowState.readState(testDir);
+      expect(corruptedResult).toBeInstanceOf(Error);
+      expect(corruptedResult).not.toBeNull();
+    });
   });
 
   describe('updateState', () => {
@@ -283,6 +308,17 @@ describe('workflow-state', () => {
       expect(summary.currentPhase).toBe('worktree-setup');
       expect(summary.progress).toBe('2/17');
       expect(summary.task.id).toBe('123');
+    });
+
+    it('should return error object for corrupted state', () => {
+      const statePath = path.join(testDir, '.claude', 'workflow-state.json');
+      fs.mkdirSync(path.dirname(statePath), { recursive: true });
+      fs.writeFileSync(statePath, 'corrupted data');
+
+      const summary = workflowState.getWorkflowSummary(testDir);
+
+      expect(summary.error).toContain('Corrupted workflow state');
+      expect(summary.code).toBe('ERR_STATE_CORRUPTED');
     });
   });
 

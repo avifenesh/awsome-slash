@@ -126,6 +126,12 @@ const toolHandlers = {
   async workflow_status() {
     const state = workflowState.readState();
 
+    if (state instanceof Error) {
+      return {
+        content: [{ type: 'text', text: `Error: ${state.message}` }],
+        isError: true
+      };
+    }
     if (!state) {
       return { content: [{ type: 'text', text: 'No active workflow.' }] };
     }
@@ -172,6 +178,12 @@ const toolHandlers = {
   async workflow_resume() {
     const state = workflowState.readState();
 
+    if (state instanceof Error) {
+      return {
+        content: [{ type: 'text', text: `Error: ${state.message}` }],
+        isError: true
+      };
+    }
     if (!state) {
       return {
         content: [{ type: 'text', text: 'No workflow to resume.' }],
@@ -197,6 +209,12 @@ const toolHandlers = {
   async workflow_abort() {
     const state = workflowState.readState();
 
+    if (state instanceof Error) {
+      return {
+        content: [{ type: 'text', text: `Error: ${state.message}` }],
+        isError: true
+      };
+    }
     if (!state) {
       return {
         content: [{ type: 'text', text: 'No workflow to abort.' }]
