@@ -97,11 +97,9 @@ describe('workflow-state', () => {
     });
 
     it('should distinguish between missing and corrupted files', () => {
-      // Missing file should return null
       const missingResult = workflowState.readState(testDir);
       expect(missingResult).toBeNull();
 
-      // Corrupted file should return Error
       const statePath = path.join(testDir, '.claude', 'workflow-state.json');
       fs.mkdirSync(path.dirname(statePath), { recursive: true });
       fs.writeFileSync(statePath, 'not valid json at all');
