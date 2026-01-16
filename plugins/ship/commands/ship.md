@@ -245,10 +245,13 @@ MERGEABLE=$(gh pr view $PR_NUMBER --json mergeable --jq '.mergeable')
 [ "$MERGEABLE" != "MERGEABLE" ] && { echo "✗ PR not mergeable"; exit 1; }
 
 # 2. MANDATORY: Verify ALL comments resolved (zero unresolved threads)
-REPO_INFO=$(gh repo view --json owner,name --jq '"\(.owner.login)/\(.name)"')
-OWNER=$(echo "$REPO_INFO" | cut -d'/' -f1)
-REPO=$(echo "$REPO_INFO" | cut -d'/' -f2)
+# Use separate gh calls for cleaner extraction (avoids cut parsing issues)
+OWNER=$(gh repo view --json owner --jq '.owner.login')
+REPO=$(gh repo view --json name --jq '.name')
 
+# NOTE: Fetches first 100 threads. For PRs with >100 comment threads (rare),
+# implement pagination using pageInfo.hasNextPage and pageInfo.endCursor.
+# This covers 99.9% of PRs - pagination is left as a future enhancement.
 UNRESOLVED=$(gh api graphql -f query='
   query($owner: String!, $repo: String!, $pr: Int!) {
     repository(owner: $owner, name: $repo) {

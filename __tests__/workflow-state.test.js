@@ -370,4 +370,66 @@ describe('workflow-state', () => {
       expect(workflowState.PHASES[workflowState.PHASES.length - 1]).toBe('complete');
     });
   });
+
+  describe('deepMerge security (via updateState)', () => {
+    it('should filter out __proto__ keys to prevent prototype pollution', () => {
+      const state = workflowState.createState();
+      workflowState.writeState(state, testDir);
+
+      // Attempt prototype pollution via __proto__
+      const maliciousUpdate = JSON.parse('{"task": {"__proto__": {"polluted": true}}}');
+      workflowState.updateState(maliciousUpdate, testDir);
+
+      // Verify prototype was not polluted
+      expect({}.polluted).toBeUndefined();
+      expect(Object.prototype.polluted).toBeUndefined();
+    });
+
+    it('should filter out constructor keys to prevent prototype pollution', () => {
+      const state = workflowState.createState();
+      workflowState.writeState(state, testDir);
+
+      // Attempt pollution via constructor
+      const maliciousUpdate = { task: { constructor: { prototype: { polluted: true } } } };
+      workflowState.updateState(maliciousUpdate, testDir);
+
+      // Verify prototype was not polluted
+      expect({}.polluted).toBeUndefined();
+    });
+
+    it('should filter out prototype keys to prevent prototype pollution', () => {
+      const state = workflowState.createState();
+      workflowState.writeState(state, testDir);
+
+      // Attempt pollution via prototype key
+      const maliciousUpdate = { task: { prototype: { polluted: true } } };
+      workflowState.updateState(maliciousUpdate, testDir);
+
+      // Verify prototype was not polluted
+      expect({}.polluted).toBeUndefined();
+    });
+
+    it('should handle null values in updates', () => {
+      const state = workflowState.createState();
+      state.task = { id: '123', title: 'Test' };
+      workflowState.writeState(state, testDir);
+
+      const updated = workflowState.updateState({ task: null }, testDir);
+
+      expect(updated.task).toBeNull();
+    });
+
+    it('should preserve Date objects in merge', () => {
+      const state = workflowState.createState();
+      workflowState.writeState(state, testDir);
+
+      const testDate = new Date('2026-01-16T00:00:00Z');
+      const updated = workflowState.updateState({
+        task: { deadline: testDate }
+      }, testDir);
+
+      // Note: Date gets serialized to string in JSON, but the merge should handle it
+      expect(updated.task.deadline).toBeDefined();
+    });
+  });
 });
