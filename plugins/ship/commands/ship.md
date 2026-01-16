@@ -307,8 +307,9 @@ This phase implements a continuous monitoring loop that waits for CI AND address
 
 ```javascript
 const MAX_ITERATIONS = 10;  // Safety limit
+const INITIAL_WAIT_MS = 180000;  // 3 minutes - wait for auto-reviews to arrive
+const ITERATION_WAIT_MS = 30000;  // 30 seconds between iterations
 let iteration = 0;
-let lastCommentCount = 0;
 
 while (iteration < MAX_ITERATIONS) {
   iteration++;
@@ -321,6 +322,13 @@ while (iteration < MAX_ITERATIONS) {
     console.log("CI failed - fixing issues before checking comments...");
     await fixCIFailures();
     continue;  // Push fix, re-run CI
+  }
+
+  // Step 1.5: On first iteration, wait 3 minutes for auto-reviews to arrive
+  // (Bots like Gemini Code Assist, CodeRabbit, etc. need time to analyze)
+  if (iteration === 1) {
+    console.log("First iteration - waiting 3 minutes for auto-reviews to arrive...");
+    await sleep(INITIAL_WAIT_MS);
   }
 
   // Step 2: Check for PR comments and reviews
@@ -342,7 +350,7 @@ while (iteration < MAX_ITERATIONS) {
 
   // Step 5: Sleep before next check (allow reviewers to respond)
   console.log("Waiting 30s for CI and potential new feedback...");
-  await sleep(30000);
+  await sleep(ITERATION_WAIT_MS);
 }
 
 if (iteration >= MAX_ITERATIONS) {
@@ -361,8 +369,8 @@ wait_for_ci() {
     # Get all check runs
     CHECKS=$(gh pr checks $PR_NUMBER --json name,state,conclusion 2>/dev/null || echo "[]")
 
-    PENDING=$(echo "$CHECKS" | jq '[.[] | select(.state=="pending" or .state=="queued" or .state=="in_progress")] | length')
-    FAILED=$(echo "$CHECKS" | jq '[.[] | select(.conclusion=="failure" or .conclusion=="cancelled")] | length')
+    PENDING=$(echo "$CHECKS" | jq '[.[] | select(.state | IN("pending", "queued", "in_progress"))] | length')
+    FAILED=$(echo "$CHECKS" | jq '[.[] | select(.conclusion | IN("failure", "cancelled"))] | length')
     PASSED=$(echo "$CHECKS" | jq '[.[] | select(.conclusion=="success")] | length')
 
     if [ "$FAILED" -gt 0 ]; then
@@ -388,19 +396,11 @@ check_pr_feedback() {
 
   echo "Checking PR feedback..."
 
-  # Get review comments (inline code comments)
-  REVIEW_COMMENTS=$(gh api repos/{owner}/{repo}/pulls/$pr_number/comments \
-    --jq '[.[] | select(.in_reply_to_id == null)] | length')
-
-  # Get issue comments (general PR comments)
-  ISSUE_COMMENTS=$(gh api repos/{owner}/{repo}/issues/$pr_number/comments \
-    --jq 'length')
-
   # Get review state
   REVIEWS=$(gh pr view $pr_number --json reviews --jq '.reviews')
   CHANGES_REQUESTED=$(echo "$REVIEWS" | jq '[.[] | select(.state=="CHANGES_REQUESTED")] | length')
 
-  # Get unresolved review threads
+  # Get unresolved review threads (simplified query - only fetch isResolved)
   UNRESOLVED_THREADS=$(gh api graphql -f query='
     query($owner: String!, $repo: String!, $pr: Int!) {
       repository(owner: $owner, name: $repo) {
@@ -408,13 +408,6 @@ check_pr_feedback() {
           reviewThreads(first: 100) {
             nodes {
               isResolved
-              comments(first: 1) {
-                nodes {
-                  body
-                  path
-                  line
-                }
-              }
             }
           }
         }
@@ -423,8 +416,6 @@ check_pr_feedback() {
   ' -f owner="{owner}" -f repo="{repo}" -F pr=$pr_number \
     --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length')
 
-  echo "  Review comments: $REVIEW_COMMENTS"
-  echo "  Issue comments: $ISSUE_COMMENTS"
   echo "  Unresolved threads: $UNRESOLVED_THREADS"
   echo "  Changes requested: $CHANGES_REQUESTED"
 
@@ -603,10 +594,11 @@ resolve_thread() {
 }
 
 reply_to_comment() {
-  local comment_id=$1
-  local body=$2
+  local pr_number=$1
+  local comment_id=$2
+  local body=$3
 
-  gh api repos/{owner}/{repo}/pulls/$PR_NUMBER/comments \
+  gh api repos/{owner}/{repo}/pulls/$pr_number/comments \
     -f body="$body" \
     -f in_reply_to=$comment_id
 }
@@ -639,6 +631,8 @@ commit_and_push_fixes() {
 # Phase 4: CI & Review Monitor Loop
 
 MAX_ITERATIONS=10
+INITIAL_WAIT=180  # 3 minutes - wait for auto-reviews (Gemini, CodeRabbit, etc.)
+ITERATION_WAIT=30  # 30 seconds between iterations
 iteration=0
 
 while [ $iteration -lt $MAX_ITERATIONS ]; do
@@ -654,6 +648,14 @@ while [ $iteration -lt $MAX_ITERATIONS ]; do
     # Use ci-fixer agent to fix CI failures
     # Then continue loop (push triggers new CI)
     continue
+  fi
+
+  # Step 1.5: On first iteration, wait for auto-reviews to arrive
+  if [ $iteration -eq 1 ]; then
+    echo ""
+    echo "First iteration - waiting ${INITIAL_WAIT}s for auto-reviews to arrive..."
+    echo "(Bots like Gemini Code Assist, CodeRabbit need time to analyze)"
+    sleep $INITIAL_WAIT
   fi
 
   # Step 2: Check for unresolved feedback
@@ -689,8 +691,8 @@ while [ $iteration -lt $MAX_ITERATIONS ]; do
 
   # Step 5: Wait before next iteration
   echo ""
-  echo "Waiting 30s for CI to start and potential new feedback..."
-  sleep 30
+  echo "Waiting ${ITERATION_WAIT}s for CI to start and potential new feedback..."
+  sleep $ITERATION_WAIT
 done
 
 if [ $iteration -ge $MAX_ITERATIONS ]; then
