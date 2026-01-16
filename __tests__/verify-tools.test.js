@@ -62,12 +62,68 @@ describe('verify-tools', () => {
       const result = checkTool('rm -rf /');
       expect(result.available).toBe(false);
       expect(result.version).toBeNull();
+      expect(execFileSync).not.toHaveBeenCalled();
+      expect(spawnSync).not.toHaveBeenCalled();
     });
 
     it('should reject version flags with invalid characters', () => {
       const result = checkTool('git', '--version; rm -rf /');
       expect(result.available).toBe(false);
       expect(result.version).toBeNull();
+      expect(execFileSync).not.toHaveBeenCalled();
+      expect(spawnSync).not.toHaveBeenCalled();
+    });
+
+    describe('comprehensive command injection patterns', () => {
+      const dangerousPatterns = [
+        // Newlines
+        { pattern: 'cmd\n', name: 'LF newline' },
+        { pattern: 'cmd\r', name: 'CR carriage return' },
+        { pattern: 'cmd\r\n', name: 'CRLF Windows newline' },
+        // Null bytes
+        { pattern: 'cmd\x00', name: 'null byte' },
+        // Path traversal
+        { pattern: '../../../bin/sh', name: 'Unix path traversal' },
+        { pattern: '..\\..\\cmd.exe', name: 'Windows path traversal' },
+        // Command substitution
+        { pattern: 'cmd`whoami`', name: 'backtick command substitution' },
+        { pattern: 'cmd$(ls)', name: 'dollar-paren substitution' },
+        { pattern: 'cmd"$(ls)"', name: 'quoted command substitution' },
+        // Quote escaping
+        { pattern: "cmd'test", name: 'single quote' },
+        { pattern: 'cmd"test', name: 'double quote' },
+        // Additional metacharacters
+        { pattern: 'cmd|cat', name: 'pipe' },
+        { pattern: 'cmd||true', name: 'OR operator' },
+        { pattern: 'cmd&&echo', name: 'AND operator' },
+        { pattern: 'cmd>file', name: 'output redirection' },
+        { pattern: 'cmd<file', name: 'input redirection' },
+        { pattern: 'cmd $VAR', name: 'variable expansion' },
+        { pattern: 'cmd*', name: 'glob wildcard' },
+        { pattern: 'cmd?', name: 'single char glob' },
+      ];
+
+      it.each(dangerousPatterns)(
+        'should reject $name: $pattern',
+        ({ pattern }) => {
+          const result = checkTool(pattern);
+          expect(result.available).toBe(false);
+          expect(result.version).toBeNull();
+          expect(execFileSync).not.toHaveBeenCalled();
+          expect(spawnSync).not.toHaveBeenCalled();
+        }
+      );
+
+      it.each(dangerousPatterns)(
+        'should reject $name in version flag: $pattern',
+        ({ pattern }) => {
+          const result = checkTool('git', pattern);
+          expect(result.available).toBe(false);
+          expect(result.version).toBeNull();
+          expect(execFileSync).not.toHaveBeenCalled();
+          expect(spawnSync).not.toHaveBeenCalled();
+        }
+      );
     });
   });
 
@@ -125,6 +181,7 @@ describe('verify-tools', () => {
     it('should reject invalid command characters', async () => {
       const result = await checkToolAsync('rm; cat /etc/passwd');
       expect(result.available).toBe(false);
+      expect(spawn).not.toHaveBeenCalled();
     });
   });
 

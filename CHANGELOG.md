@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Comprehensive Command Injection Tests**: 44 new test cases for `verify-tools.js` security validation (#61)
+  - Newline injection patterns (LF, CR, CRLF)
+  - Null byte injection
+  - Path traversal (Unix and Windows)
+  - Command substitution (backticks, dollar-paren)
+  - Quote escaping (single and double quotes)
+  - Shell metacharacters (pipes, redirects, operators, globs)
+  - Tests validate both command name and version flag parameters
+
+
 ## [2.2.1] - 2026-01-16
 
 ### Fixed
