@@ -124,7 +124,7 @@ function createState(type = 'next-task', policy = {}) {
 /**
  * Read workflow state from file
  * @param {string} [baseDir=process.cwd()] - Base directory
- * @returns {Object|null} Workflow state or null if not found
+ * @returns {Object|Error|null} Workflow state, Error if corrupted, or null if not found
  */
 function readState(baseDir = process.cwd()) {
   const statePath = getStatePath(baseDir);
@@ -145,8 +145,12 @@ function readState(baseDir = process.cwd()) {
 
     return state;
   } catch (error) {
-    console.error(`Error reading state: ${error.message}`);
-    return null;
+    // Return Error object to distinguish corrupted file from missing file
+    const corrupted = new Error(`Corrupted workflow state: ${error.message}`);
+    corrupted.code = 'ERR_STATE_CORRUPTED';
+    corrupted.cause = error;
+    console.error(corrupted.message);
+    return corrupted;
   }
 }
 
