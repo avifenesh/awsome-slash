@@ -431,5 +431,32 @@ describe('workflow-state', () => {
       // Note: Date gets serialized to string in JSON, but the merge should handle it
       expect(updated.task.deadline).toBeDefined();
     });
+
+    it('should replace arrays instead of merging them', () => {
+      const state = workflowState.createState();
+      state.custom = { nested: { items: [1, 2, 3] } };
+      workflowState.writeState(state, testDir);
+
+      const updated = workflowState.updateState({
+        custom: { nested: { items: [4, 5] } }
+      }, testDir);
+
+      // Arrays should be replaced, not concatenated
+      expect(updated.custom.nested.items).toEqual([4, 5]);
+    });
+
+    it('should handle deeply nested object merging', () => {
+      const state = workflowState.createState();
+      state.config = { a: { b: { c: 1, d: 2 } } };
+      workflowState.writeState(state, testDir);
+
+      const updated = workflowState.updateState({
+        config: { a: { b: { c: 99 } } }
+      }, testDir);
+
+      // Should merge deeply: c updated, d preserved
+      expect(updated.config.a.b.c).toBe(99);
+      expect(updated.config.a.b.d).toBe(2);
+    });
   });
 });
