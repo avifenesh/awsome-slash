@@ -10,6 +10,13 @@ PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 echo "Installing awesome-slash for OpenCode..."
 echo "Plugin root: $PLUGIN_ROOT"
 
+# Check if OpenCode is installed
+if ! command -v opencode &> /dev/null; then
+  echo "Error: OpenCode not found. Please install it first."
+  echo "See: https://opencode.ai/docs/cli/"
+  exit 1
+fi
+
 # Check if OpenCode config directory exists
 OPENCODE_CONFIG="${OPENCODE_CONFIG:-$HOME/.config/opencode}"
 if [ ! -d "$OPENCODE_CONFIG" ]; then
@@ -22,77 +29,80 @@ echo "Installing MCP server dependencies..."
 cd "$PLUGIN_ROOT/mcp-server"
 npm install --production
 
-# Create MCP config for OpenCode
-MCP_CONFIG="$OPENCODE_CONFIG/mcp.json"
-echo "Configuring MCP server in $MCP_CONFIG..."
+# Create/update OpenCode config with MCP server
+CONFIG_FILE="$OPENCODE_CONFIG/opencode.json"
+echo "Configuring MCP server in $CONFIG_FILE..."
 
-if [ -f "$MCP_CONFIG" ]; then
-  # Backup existing config
-  cp "$MCP_CONFIG" "$MCP_CONFIG.backup"
-  echo "Backed up existing config to $MCP_CONFIG.backup"
+if [ -f "$CONFIG_FILE" ]; then
+  cp "$CONFIG_FILE" "$CONFIG_FILE.backup"
+  echo "Backed up existing config to $CONFIG_FILE.backup"
 fi
 
 # Check if jq is available for JSON manipulation
 if command -v jq &> /dev/null; then
-  if [ -f "$MCP_CONFIG" ]; then
+  if [ -f "$CONFIG_FILE.backup" ]; then
     # Merge with existing config
-    jq --arg root "$PLUGIN_ROOT" '.mcpServers["awesome-slash"] = {
-      "command": "node",
-      "args": [($root + "/mcp-server/index.js")],
-      "env": {"PLUGIN_ROOT": $root}
-    }' "$MCP_CONFIG.backup" > "$MCP_CONFIG"
+    jq --arg root "$PLUGIN_ROOT" '.mcp["awesome-slash"] = {
+      "type": "local",
+      "command": ["node", ($root + "/mcp-server/index.js")],
+      "environment": {"PLUGIN_ROOT": $root},
+      "enabled": true
+    }' "$CONFIG_FILE.backup" > "$CONFIG_FILE"
   else
     # Create new config
     jq -n --arg root "$PLUGIN_ROOT" '{
-      "mcpServers": {
+      "mcp": {
         "awesome-slash": {
-          "command": "node",
-          "args": [($root + "/mcp-server/index.js")],
-          "env": {"PLUGIN_ROOT": $root}
+          "type": "local",
+          "command": ["node", ($root + "/mcp-server/index.js")],
+          "environment": {"PLUGIN_ROOT": $root},
+          "enabled": true
         }
       }
-    }' > "$MCP_CONFIG"
+    }' > "$CONFIG_FILE"
   fi
 else
   # Create config without jq
-  cat > "$MCP_CONFIG" << EOF
+  cat > "$CONFIG_FILE" << EOF
 {
-  "mcpServers": {
+  "mcp": {
     "awesome-slash": {
-      "command": "node",
-      "args": ["$PLUGIN_ROOT/mcp-server/index.js"],
-      "env": {
+      "type": "local",
+      "command": ["node", "$PLUGIN_ROOT/mcp-server/index.js"],
+      "environment": {
         "PLUGIN_ROOT": "$PLUGIN_ROOT"
-      }
+      },
+      "enabled": true
     }
   }
 }
 EOF
 fi
 
-# Copy agent definitions to OpenCode
+# Create agent definitions
 AGENT_DIR="$OPENCODE_CONFIG/agent"
 mkdir -p "$AGENT_DIR"
 
 echo "Installing agent configurations..."
 
-# Convert and copy workflow orchestrator agent
+# Workflow orchestrator agent (primary)
 cat > "$AGENT_DIR/workflow.md" << 'EOF'
 ---
-name: workflow
-model: claude-sonnet-4-20250514
+description: Master workflow orchestrator for task-to-production automation with MCP tools
+mode: primary
 tools:
   read: true
   write: true
   bash: true
   glob: true
   grep: true
-description: Master workflow orchestrator for task-to-production automation
 ---
+
+# Workflow Orchestrator
 
 You are a workflow orchestrator that manages development tasks from discovery to production.
 
-## Capabilities
+## MCP Tools Available
 
 Use the awesome-slash MCP tools:
 - `workflow_status` - Check current workflow state
@@ -118,14 +128,84 @@ Use the awesome-slash MCP tools:
 When starting, check for existing workflow with `workflow_status` first.
 EOF
 
+# Review agent (subagent)
+cat > "$AGENT_DIR/review.md" << 'EOF'
+---
+description: Multi-agent code reviewer for quality analysis
+mode: subagent
+tools:
+  read: true
+  write: false
+  edit: false
+  bash: false
+  glob: true
+  grep: true
+---
+
+# Code Review Agent
+
+Run comprehensive code review using the awesome-slash `review_code` MCP tool.
+
+## Review Domains
+
+- Code quality analysis
+- Silent failure detection
+- Test coverage analysis
+- Security review
+
+## Process
+
+1. Call `review_code` with files to review
+2. Report issues by severity (critical, high, medium, low)
+3. Auto-fix critical and high severity issues
+4. Report medium and low for manual review
+EOF
+
+# Ship agent (subagent)
+cat > "$AGENT_DIR/ship.md" << 'EOF'
+---
+description: Complete PR workflow from commit to production
+mode: subagent
+tools:
+  read: true
+  write: true
+  bash: true
+  glob: true
+  grep: true
+permission:
+  bash:
+    "git *": allow
+    "gh *": allow
+    "*": ask
+---
+
+# Ship Agent
+
+Complete PR workflow from commit to production.
+
+## Workflow
+
+1. Stage and commit changes with AI-generated message
+2. Create PR with context
+3. Run `review_code` MCP tool for multi-agent review
+4. Monitor CI status
+5. Merge when approved
+6. Deploy if configured
+
+## Platform Support
+
+- CI: GitHub Actions, GitLab CI, CircleCI
+- Deploy: Railway, Vercel, Netlify, Fly.io
+EOF
+
 echo ""
 echo "✓ Installation complete!"
 echo ""
 echo "Usage:"
 echo "  1. Start OpenCode: opencode"
-echo "  2. The 'workflow' agent is now available (Tab to switch)"
+echo "  2. Switch agents with Tab: workflow, review, ship"
 echo "  3. MCP tools: workflow_status, workflow_start, task_discover, etc."
 echo ""
 echo "To verify installation:"
-echo "  opencode --list-agents"
-echo "  opencode --list-mcp-servers"
+echo "  opencode mcp list"
+echo "  ls ~/.config/opencode/agent/"
