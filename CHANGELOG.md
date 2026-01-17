@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Improved
+- **Test Coverage**: Enhanced `workflow-state.test.js` to verify state immutability after failed operations (#60)
+  - Added validation that `startPhase()` with invalid phase name leaves state completely unchanged
+  - Ensures no partial writes occur when operations fail
+  - Strengthens guarantee of atomic state updates
+
+
 ## [2.3.1] - 2026-01-17
 
 ### Fixed
