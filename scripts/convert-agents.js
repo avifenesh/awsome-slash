@@ -171,69 +171,62 @@ async function main() {
 // Handle batch conversion mode
 async function batchConvert() {
   const args = process.argv.slice(2);
+  const target = args[args.indexOf('--target') + 1];
+  const inputDir = args[args.indexOf('--input-dir') + 1];
+  const outputDir = args[args.indexOf('--output-dir') + 1];
 
-  if (args.includes('--batch')) {
-    const target = args[args.indexOf('--target') + 1];
-    const inputDir = args[args.indexOf('--input-dir') + 1];
-    const outputDir = args[args.indexOf('--output-dir') + 1];
+  if (!target || !inputDir || !outputDir) {
+    console.error('Batch mode requires: --target <opencode|codex> --input-dir <path> --output-dir <path>');
+    process.exit(1);
+  }
 
-    if (!target || !inputDir || !outputDir) {
-      console.error('Batch mode requires: --target <opencode|codex> --input-dir <path> --output-dir <path>');
-      process.exit(1);
+  try {
+    await fs.mkdir(outputDir, { recursive: true });
+
+    const stats = await fs.stat(outputDir);
+    if (!stats.isDirectory()) {
+      throw new Error(`${outputDir} exists but is not a directory`);
     }
 
-    try {
-      // Ensure output directory exists
-      await fs.mkdir(outputDir, { recursive: true });
+    const files = await fs.readdir(inputDir);
+    const mdFiles = files.filter(f => f.endsWith('.md'));
 
-      // Verify directory was created
-      const stats = await fs.stat(outputDir);
-      if (!stats.isDirectory()) {
-        throw new Error(`${outputDir} exists but is not a directory`);
-      }
+    console.log(`Converting ${mdFiles.length} agent files to ${target} format...`);
 
-      const files = await fs.readdir(inputDir);
-      const mdFiles = files.filter(f => f.endsWith('.md'));
+    for (const file of mdFiles) {
+      const inputPath = path.join(inputDir, file);
+      const outputExt = target === 'opencode' ? '.json' : '.yaml';
+      const outputName = file.replace('.md', outputExt);
+      const outputPath = path.join(outputDir, outputName);
 
-      console.log(`Converting ${mdFiles.length} agent files to ${target} format...`);
+      try {
+        const content = await fs.readFile(inputPath, 'utf-8');
+        const { frontmatter, body } = parseFrontmatter(content);
 
-      for (const file of mdFiles) {
-        const inputPath = path.join(inputDir, file);
-        const outputExt = target === 'opencode' ? '.json' : '.yaml';
-        const outputName = file.replace('.md', outputExt);
-        const outputPath = path.join(outputDir, outputName);
-
-        try {
-          const content = await fs.readFile(inputPath, 'utf-8');
-          const { frontmatter, body } = parseFrontmatter(content);
-
-          let result;
-          if (target === 'opencode') {
-            result = convertToOpenCode(frontmatter, body);
-          } else {
-            result = convertToCodex(frontmatter, body);
-          }
-
-          const outputContent = target === 'opencode'
-            ? JSON.stringify(result, null, 2)
-            : yaml.dump(result, { indent: 2 });
-
-          await fs.writeFile(outputPath, outputContent);
-          console.log(`  ✓ ${file} → ${outputName}`);
-
-        } catch (error) {
-          console.error(`  ✗ ${file}: ${error.message}`);
+        let result;
+        if (target === 'opencode') {
+          result = convertToOpenCode(frontmatter, body);
+        } else {
+          result = convertToCodex(frontmatter, body);
         }
+
+        const outputContent = target === 'opencode'
+          ? JSON.stringify(result, null, 2)
+          : yaml.dump(result, { indent: 2 });
+
+        await fs.writeFile(outputPath, outputContent);
+        console.log(`  ✓ ${file} → ${outputName}`);
+
+      } catch (error) {
+        console.error(`  ✗ ${file}: ${error.message}`);
       }
-
-      console.log(`\nConversion complete! Output in: ${outputDir}`);
-
-    } catch (error) {
-      console.error(`Batch conversion error: ${error.message}`);
-      process.exit(1);
     }
-  } else {
-    await main();
+
+    console.log(`\nConversion complete! Output in: ${outputDir}`);
+
+  } catch (error) {
+    console.error(`Batch conversion error: ${error.message}`);
+    process.exit(1);
   }
 }
 

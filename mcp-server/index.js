@@ -362,10 +362,11 @@ const toolHandlers = {
       };
 
     } catch (error) {
+      console.error('Error discovering tasks:', error);
       return {
         content: [{
           type: 'text',
-          text: `Error discovering tasks: ${error.message}\nSource: ${taskSource}\nStack: ${error.stack}`
+          text: `Error discovering tasks: An internal error occurred. Please check server logs for details.`
         }],
         isError: true
       };
@@ -387,8 +388,12 @@ const toolHandlers = {
           }
 
           if (!filesToReview.length) {
-            const { stdout: lastCommit } = await execAsync('git diff --name-only HEAD~1');
-            filesToReview = lastCommit.trim().split('\n').filter(f => f);
+            try {
+              const { stdout: lastCommit } = await execAsync('git diff --name-only HEAD~1');
+              filesToReview = lastCommit.trim().split('\n').filter(f => f);
+            } catch (e) {
+              // HEAD~1 doesn't exist (single-commit repo) - no files to review
+            }
           }
 
         } catch (error) {
@@ -518,10 +523,11 @@ const toolHandlers = {
       };
 
     } catch (error) {
+      console.error('Error during code review:', error);
       return {
         content: [{
           type: 'text',
-          text: `Error during code review: ${error.message}`
+          text: `Error during code review: An internal error occurred.`
         }],
         isError: true
       };

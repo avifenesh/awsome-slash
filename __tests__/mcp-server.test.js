@@ -2,11 +2,7 @@
  * Tests for MCP Server functionality
  */
 
-const { exec } = require('child_process');
 const { promisify } = require('util');
-const execAsync = promisify(exec);
-const fs = require('fs').promises;
-const path = require('path');
 
 // Mock implementations
 jest.mock('child_process', () => ({
@@ -26,101 +22,12 @@ jest.mock('fs', () => ({
 const { exec: mockExec } = require('child_process');
 
 // Import the actual tool handlers from the MCP server
-// Note: This requires exporting toolHandlers from index.js
-let toolHandlers;
-try {
-  // Attempt to import the actual handlers
-  const mcpModule = require('../mcp-server/index.js');
-  toolHandlers = mcpModule.toolHandlers;
-} catch (error) {
-  // Fallback to mock implementation for testing
-  console.warn('Could not import actual toolHandlers, using mock implementation');
-}
+// Tests MUST fail if module cannot be imported - no fallback to ensure we test actual code
+const { toolHandlers } = require('../mcp-server/index.js');
 
 describe('MCP Server - task_discover', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-
-    // If we couldn't import actual handlers, use mock
-    if (!toolHandlers) {
-      toolHandlers = {
-        task_discover: async ({ source, filter, limit }) => {
-          const taskSource = source || 'gh-issues';
-          const maxTasks = limit || 10;
-
-          try {
-            let tasks = [];
-
-            if (taskSource === 'gh-issues') {
-              // Check if gh is available
-              try {
-                await execAsync('gh --version');
-              } catch (error) {
-                return {
-                  content: [{
-                    type: 'text',
-                    text: 'Error: GitHub CLI (gh) is not installed or not configured. Please install gh and authenticate.'
-                  }],
-                  isError: true
-                };
-              }
-
-              // Fetch issues from GitHub
-              const { stdout } = await execAsync(
-                `gh issue list --state open --json number,title,labels,createdAt --limit ${maxTasks}`
-              );
-
-              const issues = JSON.parse(stdout || '[]');
-
-              // Apply filter if provided
-              let filtered = issues;
-              if (filter && filter !== 'all') {
-                filtered = issues.filter(issue => {
-                  const labelNames = issue.labels.map(l => l.name.toLowerCase());
-                  const filterLower = filter.toLowerCase();
-
-                  return labelNames.some(label =>
-                    label.includes(filterLower) ||
-                    filterLower.includes(label)
-                  );
-                });
-              }
-
-              // Transform to task format
-              tasks = filtered.map(issue => ({
-                id: `#${issue.number}`,
-                title: issue.title,
-                type: issue.labels.find(l => ['bug', 'feature', 'security'].includes(l.name.toLowerCase()))?.name || 'task',
-                labels: issue.labels.map(l => l.name),
-                createdAt: issue.createdAt,
-                source: 'github'
-              }));
-            }
-
-            return {
-              content: [{
-                type: 'text',
-                text: JSON.stringify({
-                  source: taskSource,
-                  filter: filter || 'all',
-                  count: tasks.length,
-                  tasks: tasks
-                }, null, 2)
-              }]
-            };
-
-          } catch (error) {
-            return {
-              content: [{
-                type: 'text',
-                text: `Error discovering tasks: ${error.message}`
-              }],
-              isError: true
-            };
-          }
-        }
-      };
-    }
   });
 
   test('should fetch GitHub issues successfully', async () => {
