@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "description": "Example configuration for awesome-slash. Copy to .awesomeslashrc.json (home or project directory) and customize.",
+
+  "performance": {
+    "maxCachedFileSize": 65536,
+    "cacheSize": 100,
+    "cacheTTL": 200,
+    "execTimeout": 5000,
+    "maxGlobWildcards": 10,
+    "maxMergeDepth": 50,
+    "maxLineNumber": 10000000
+  },
+
+  "state": {
+    "baseDir": ".claude",
+    "stateFile": ".workflow-state.json",
+    "schemaVersion": "2.0.0"
+  },
+
+  "tasks": {
+    "defaultSource": "gh-issues",
+    "defaultPriority": "continue",
+    "defaultStoppingPoint": "merged",
+    "maxTasksPerSource": 100
+  },
+
+  "review": {
+    "maxIterations": 3,
+    "defaultReviewers": [
+      "code-reviewer",
+      "silent-failure-hunter",
+      "test-analyzer"
+    ]
+  },
+
+  "mcp": {
+    "serverName": "awesome-slash",
+    "serverVersion": "2.0.0",
+    "port": null
+  },
+
+  "security": {
+    "enablePathValidation": true,
+    "enableInputSanitization": true,
+    "maxCommandLength": 10000
+  },
+
+  "logging": {
+    "level": "info",
+    "enableColors": true,
+    "enableTimestamps": false
+  }
+}

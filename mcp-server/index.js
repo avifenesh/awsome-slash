@@ -295,6 +295,78 @@ const toolHandlers = {
           source: 'github'
         }));
 
+      } else if (taskSource === 'linear') {
+        // Linear integration via GitHub issues containing Linear URLs
+        try {
+          await execAsync('gh --version');
+        } catch (error) {
+          return {
+            content: [{
+              type: 'text',
+              text: 'Error: GitHub CLI (gh) is not installed or not configured. Linear integration requires gh to access GitHub issues with Linear links.'
+            }],
+            isError: true
+          };
+        }
+
+        const ghArgs = [
+          'issue', 'list',
+          '--state', 'open',
+          '--json', 'number,title,body,labels,createdAt',
+          '--limit', String(Math.min(maxTasks * 2, 100)) // Fetch more since we'll filter for Linear links
+        ];
+        const { stdout } = await execAsync(`gh ${ghArgs.join(' ')}`);
+        const issues = JSON.parse(stdout || '[]');
+
+        // Extract Linear URLs from issue bodies
+        const linearUrlPattern = /https:\/\/linear\.app\/[^\s)]+/g;
+        const linearIssues = issues
+          .map(issue => {
+            const linearMatches = issue.body ? issue.body.match(linearUrlPattern) : null;
+            if (!linearMatches || linearMatches.length === 0) return null;
+
+            // Extract Linear ID from URL (e.g., ENG-123 from https://linear.app/company/issue/ENG-123/...)
+            const linearUrl = linearMatches[0];
+            const linearIdMatch = linearUrl.match(/\/([A-Z]+-\d+)/);
+            const linearId = linearIdMatch ? linearIdMatch[1] : null;
+
+            return {
+              number: issue.number,
+              title: issue.title,
+              body: issue.body,
+              labels: issue.labels,
+              createdAt: issue.createdAt,
+              linearUrl: linearUrl,
+              linearId: linearId
+            };
+          })
+          .filter(issue => issue !== null)
+          .slice(0, maxTasks);
+
+        let filtered = linearIssues;
+        if (filter && filter !== 'all') {
+          filtered = linearIssues.filter(issue => {
+            const labelNames = issue.labels.map(l => l.name.toLowerCase());
+            const filterLower = filter.toLowerCase();
+
+            return labelNames.some(label =>
+              label.includes(filterLower) ||
+              filterLower.includes(label)
+            );
+          });
+        }
+
+        tasks = filtered.map(issue => ({
+          id: issue.linearId || `#${issue.number}`,
+          title: issue.title,
+          type: issue.labels.find(l => ['bug', 'feature', 'security'].includes(l.name.toLowerCase()))?.name || 'task',
+          labels: issue.labels.map(l => l.name),
+          createdAt: issue.createdAt,
+          source: 'linear',
+          linearUrl: issue.linearUrl,
+          githubNumber: issue.number
+        }));
+
       } else if (taskSource === 'tasks-md') {
         const possibleFiles = ['TASKS.md', 'PLAN.md', 'TODO.md'];
         let content = null;
@@ -588,7 +660,45 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = { toolHandlers };
 }
 
+/**
+ * Error boundary for uncaught errors
+ * Prevents server crashes and provides meaningful error messages
+ */
+function setupErrorBoundary() {
+  // Handle uncaught exceptions
+  process.on('uncaughtException', (error) => {
+    console.error('Uncaught Exception:', error);
+    console.error('Stack:', error.stack);
+    // Don't exit - MCP servers should stay running
+  });
+
+  // Handle unhandled promise rejections
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise);
+    console.error('Reason:', reason);
+    // Don't exit - MCP servers should stay running
+  });
+
+  // Handle SIGINT gracefully
+  process.on('SIGINT', () => {
+    console.error('Received SIGINT, shutting down gracefully...');
+    process.exit(0);
+  });
+
+  // Handle SIGTERM gracefully
+  process.on('SIGTERM', () => {
+    console.error('Received SIGTERM, shutting down gracefully...');
+    process.exit(0);
+  });
+}
+
 // Only run main if this is the main module
 if (require.main === module) {
-  main().catch(console.error);
+  setupErrorBoundary();
+
+  main().catch((error) => {
+    console.error('Fatal error in main():', error);
+    console.error('Stack:', error.stack);
+    process.exit(1);
+  });
 }
