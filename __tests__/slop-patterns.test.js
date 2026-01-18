@@ -674,34 +674,32 @@ describe('slop-patterns', () => {
         expect(result).toBe(false);
       });
 
-      it('should use non-backtracking pattern for single star', () => {
-        // Single star should not match path separators
-        // This tests that * uses [^/\\]* not .*
-        const patterns = ['*.js', 'src/*.ts'];
-
+      it('should match patterns anywhere in path (backward compatible)', () => {
+        // Single star matches anything including path separators for backward compatibility
+        // This matches existing behavior where *.test.* excludes test files anywhere
         expect(isFileExcluded('test.js', ['*.js'])).toBe(true);
-        expect(isFileExcluded('path/test.js', ['*.js'])).toBe(false); // * should not match /
+        expect(isFileExcluded('path/test.js', ['*.js'])).toBe(true); // * matches path separators
         expect(isFileExcluded('src/test.ts', ['src/*.ts'])).toBe(true);
-        expect(isFileExcluded('src/deep/test.ts', ['src/*.ts'])).toBe(false); // * should not match /
+        expect(isFileExcluded('src/deep/test.ts', ['src/*.ts'])).toBe(true); // * matches path separators
       });
 
       it('should allow globstar (**) to match path separators', () => {
-        // ** (globstar) should match anything including path separators
-        // Note: **/*.js requires at least one directory (the / is literal)
+        // ** (globstar) matches any characters including path separators
+        // Pattern **/*.js requires at least one / because the literal / is in the pattern
         expect(isFileExcluded('deep/path/test.js', ['**/*.js'])).toBe(true);
         expect(isFileExcluded('a/b/c/d/test.js', ['**/*.js'])).toBe(true);
         expect(isFileExcluded('dir/test.js', ['**/*.js'])).toBe(true);
-        // For root files, use *.js directly
+        // For root files without path separators, use *.js pattern directly
         expect(isFileExcluded('test.js', ['*.js'])).toBe(true);
       });
 
       it('should handle mixed single-star and globstar patterns', () => {
         // Mix of * and ** in same pattern
-        // Note: src/**/*.test.* requires at least one directory after src/
+        // Pattern src/**/*.test.* requires at least one / after src/
         expect(isFileExcluded('src/components/Button.test.tsx', ['src/**/*.test.*'])).toBe(true);
         expect(isFileExcluded('src/deep/nested/Button.test.tsx', ['src/**/*.test.*'])).toBe(true);
         expect(isFileExcluded('lib/Button.test.tsx', ['src/**/*.test.*'])).toBe(false);
-        // For direct children of src/, use src/*.test.*
+        // For direct children of src/, use src/*.test.* pattern
         expect(isFileExcluded('src/Button.test.tsx', ['src/*.test.*'])).toBe(true);
       });
 

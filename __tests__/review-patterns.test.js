@@ -281,7 +281,6 @@ describe('review-patterns', () => {
         Object.entries(reviewPatterns).forEach(([framework, categories]) => {
           Object.entries(categories).forEach(([category, patterns]) => {
             patterns.forEach(pattern => {
-              const key = `${framework}:${category}:${pattern}`;
               if (allPatterns.has(pattern)) {
                 duplicates.push({ framework, category, pattern });
               }

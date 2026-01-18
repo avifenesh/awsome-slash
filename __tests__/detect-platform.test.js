@@ -353,16 +353,15 @@ describe('detect-platform', () => {
         fs.existsSync.mockReturnValue(false);
 
         detectCI();
-        const callCount1 = fs.existsSync.mock.calls.length;
+        // First call should make file system calls
+        expect(fs.existsSync.mock.calls.length).toBeGreaterThan(0);
 
         invalidateCache();
         fs.existsSync.mockClear();
 
         detectCI();
-        const callCount2 = fs.existsSync.mock.calls.length;
-
-        // After invalidation, should make fresh calls
-        expect(callCount2).toBeGreaterThan(0);
+        // After invalidation, should make fresh calls again
+        expect(fs.existsSync.mock.calls.length).toBeGreaterThan(0);
       });
     });
 

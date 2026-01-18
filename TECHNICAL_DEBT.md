@@ -152,7 +152,7 @@ Last updated: 2026-01-18
   - **Fix**: Changed from Array.from().slice() to O(1) while loop using Map's insertion order
   - **Effort**: small
 - [x] **lib/patterns/slop-patterns.js:40-42** - Catastrophic backtracking risk in glob-to-regex **FIXED 2026-01-18**
-  - **Fix**: Added MAX_GLOB_WILDCARDS limit (10), single star uses `[^/\\]*` to prevent backtracking
+  - **Fix**: Added MAX_GLOB_WILDCARDS limit (10) to prevent excessive pattern complexity; patterns with >10 wildcards return empty match as safety fallback
 - [x] **lib/state/workflow-state.js:327** - O(n) phase index lookup **FIXED 2026-01-18**
   - **Fix**: Added pre-computed PHASE_INDEX Map with O(1) lookup helpers (isValidPhase, getPhaseIndex)
   - **Effort**: small
@@ -243,7 +243,7 @@ Last updated: 2026-01-18
 | `lib/utils/context-optimizer.js` | Added 3 validation functions, secured 8 command-building functions, exported internals for testing |
 | `lib/state/workflow-state.js` | Added path validation, deepMerge depth limit, state caching, PHASE_INDEX Map for O(1) lookups |
 | `lib/platform/detect-platform.js` | Added timeout wrapper, O(1) cache eviction, per-file size limit (64KB) |
-| `lib/patterns/slop-patterns.js` | Added glob-to-regex ReDoS protection (MAX_GLOB_WILDCARDS limit, non-backtracking character class for single star) |
+| `lib/patterns/slop-patterns.js` | Added glob-to-regex ReDoS protection (MAX_GLOB_WILDCARDS limit of 10 wildcards) |
 | `lib/index.js` | **NEW** - Unified library entry point |
 | `__tests__/context-optimizer.test.js` | **NEW** - 98 comprehensive security-focused tests |
 | `__tests__/detect-platform.test.js` | Added 38 tests (11 cache behavior + 22 async error path + 5 multi-CI precedence tests) |
