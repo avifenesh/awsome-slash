@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Validate plugin structure
+        run: node scripts/validate-plugins.js
+
+      - name: MCP smoke test
+        run: node scripts/mcp-smoke-test.js

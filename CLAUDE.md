@@ -211,8 +211,3 @@ The ship command **MUST execute these phases**:
 | State management | `lib/state/workflow-state.js` |
 | Plugin manifest | `.claude-plugin/plugin.json` |
 
----
-
-## Technical Debt
-
-> `TECHNICAL_DEBT.md` is a local file (gitignored) used for tracking. Read it for current issues.
