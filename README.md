@@ -96,7 +96,7 @@ Complete task-to-production automation with state management and resume capabili
 **Features:**
 - **Fully autonomous** after plan approval - no human in the loop
 - Resume capability with `.claude/.workflow-state.json`
-- 14 specialist agents with model optimization (opus/sonnet)
+- 18 specialist agents with model optimization (opus/sonnet)
 - Quality gates: deslop-work, test-coverage-checker, delivery-validator, docs-updater
 - SubagentStop hooks for automatic workflow transitions
 - Policy-based stopping points (pr-created, merged, deployed, production)
@@ -274,7 +274,7 @@ Workflows persist state in `.claude/.workflow-state.json`:
 }
 ```
 
-### Specialist Agents (12 Total)
+### Specialist Agents (18 Total)
 
 **Core Workflow (Opus - Complex Tasks):**
 | Agent | Purpose |
@@ -300,6 +300,14 @@ Workflows persist state in `.claude/.workflow-state.json`:
 | worktree-manager | Create isolated worktrees |
 | ci-monitor | Monitor CI/PR status with sleep loops |
 
+**Reality Check (Sonnet + Opus - Plan Drift Detection):**
+| Agent | Purpose |
+|-------|---------|
+| issue-scanner | Analyze GitHub issues, PRs, milestones |
+| doc-analyzer | Examine documentation for plans and roadmaps |
+| code-explorer | Deep codebase structure analysis |
+| plan-synthesizer | Combine findings into prioritized plan (opus) |
+
 ---
 
 ## Repository Structure
@@ -311,11 +319,12 @@ awesome-slash/
 ├── plugins/
 │   ├── next-task/           # Master workflow orchestrator
 │   │   ├── commands/        # next-task, update-docs-around, delivery-approval
-│   │   ├── agents/          # 14 specialist agents
+│   │   ├── agents/          # 18 specialist agents
 │   │   └── hooks/           # SubagentStop hooks for workflow automation
 │   ├── ship/                # PR workflow
 │   ├── deslop-around/       # AI slop cleanup
-│   └── project-review/      # Multi-agent review
+│   ├── project-review/      # Multi-agent review
+│   └── reality-check/       # Plan drift detection
 ├── lib/
 │   ├── state/               # Workflow state management
 │   ├── platform/            # Auto-detection
