@@ -1,0 +1,197 @@
+name: Claude Code Review (On Demand)
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to review'
+        required: true
+        type: number
+      review_type:
+        description: 'Type of review'
+        required: true
+        type: choice
+        options:
+          - full
+          - security
+          - performance
+          - quick
+        default: full
+      model:
+        description: 'Claude model to use'
+        required: true
+        type: choice
+        options:
+          - claude-sonnet-4-20250514
+          - claude-opus-4-20250514
+        default: claude-sonnet-4-20250514
+
+jobs:
+  claude-code-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Get PR information
+        id: pr-info
+        run: |
+          PR_NUMBER=${{ inputs.pr_number }}
+
+          # Get PR diff and details
+          gh pr diff $PR_NUMBER > pr_diff.txt
+          gh pr view $PR_NUMBER --json title,body,files,baseRefName,headRefName \
+            --jq '{title: .title, body: .body, files: .files, base: .baseRefName, head: .headRefName}' > pr_details.json
+
+          # Get file contents for changed files (limit to source files)
+          mkdir -p changed_files
+          for file in $(jq -r '.files[].path' pr_details.json | grep -E '\.(js|ts|jsx|tsx|py|rs|go|md)$' | head -20); do
+            if [ -f "$file" ]; then
+              mkdir -p "changed_files/$(dirname $file)"
+              cp "$file" "changed_files/$file"
+            fi
+          done
+
+          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build review prompt
+        id: prompt
+        run: |
+          REVIEW_TYPE="${{ inputs.review_type }}"
+
+          case $REVIEW_TYPE in
+            security)
+              FOCUS="Focus exclusively on security vulnerabilities: injection attacks, XSS, authentication issues, sensitive data exposure, OWASP Top 10."
+              ;;
+            performance)
+              FOCUS="Focus exclusively on performance: algorithmic complexity, memory usage, async patterns, caching opportunities, database queries."
+              ;;
+            quick)
+              FOCUS="Provide a brief, high-level review highlighting only critical issues. Be very concise."
+              ;;
+            *)
+              FOCUS="Provide a comprehensive review covering: correctness, security, performance, code style, test coverage, and documentation."
+              ;;
+          esac
+
+          echo "focus=$FOCUS" >> $GITHUB_OUTPUT
+
+      - name: Run Claude review
+        run: |
+          PR_TITLE=$(jq -r '.title' pr_details.json)
+          PR_BODY=$(jq -r '.body // "No description"' pr_details.json)
+          CHANGED_FILES=$(jq -r '[.files[].path] | join("\n")' pr_details.json)
+          DIFF=$(cat pr_diff.txt | head -c 150000)
+          FOCUS="${{ steps.prompt.outputs.focus }}"
+
+          SYSTEM_PROMPT="You are an expert code reviewer for the awesome-slash project (a Claude Code plugin for workflow automation).
+
+          Project context:
+          - Node.js/JavaScript codebase with TypeScript support
+          - Uses Claude Code plugin architecture
+          - Has 18 specialist agents for various tasks
+          - Follows conventional commits
+
+          $FOCUS
+
+          Format your review as:
+          ## Summary
+          Brief overall assessment (1-2 sentences)
+
+          ## Issues Found
+          List each issue with:
+          - **File:line** - Description
+          - Severity: Critical/High/Medium/Low
+          - Suggestion for fix
+
+          ## Recommendations
+          Optional improvements that aren't blocking
+
+          ## Approval Status
+          - APPROVE: No blocking issues
+          - REQUEST_CHANGES: Has critical/high issues
+          - COMMENT: Only has suggestions"
+
+          USER_MESSAGE="Review this PR:
+
+          **Title:** $PR_TITLE
+
+          **Description:**
+          $PR_BODY
+
+          **Changed Files:**
+          $CHANGED_FILES
+
+          **Diff:**
+          \`\`\`diff
+          $DIFF
+          \`\`\`"
+
+          # Call Claude API (Anthropic direct, not Bedrock)
+          RESPONSE=$(curl -s https://api.anthropic.com/v1/messages \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: $ANTHROPIC_API_KEY" \
+            -H "anthropic-version: 2023-06-01" \
+            -d "$(jq -n \
+              --arg model "${{ inputs.model }}" \
+              --arg system "$SYSTEM_PROMPT" \
+              --arg content "$USER_MESSAGE" \
+              '{
+                model: $model,
+                max_tokens: 8192,
+                system: $system,
+                messages: [{role: "user", content: $content}]
+              }')")
+
+          # Check for errors
+          if echo "$RESPONSE" | jq -e '.error' > /dev/null 2>&1; then
+            echo "API Error:"
+            echo "$RESPONSE" | jq '.error'
+            exit 1
+          fi
+
+          # Extract review
+          echo "$RESPONSE" | jq -r '.content[0].text' > review_output.md
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Post review to PR
+        run: |
+          PR_NUMBER=${{ steps.pr-info.outputs.pr_number }}
+          REVIEW_TYPE="${{ inputs.review_type }}"
+          MODEL="${{ inputs.model }}"
+
+          REVIEW=$(cat review_output.md)
+
+          COMMENT="## Claude Code Review ($REVIEW_TYPE)
+
+          $REVIEW
+
+          ---
+          *Model: $MODEL | Type: $REVIEW_TYPE | [Triggered manually]*"
+
+          gh pr comment $PR_NUMBER --body "$COMMENT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload review artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-review-pr${{ inputs.pr_number }}
+          path: |
+            review_output.md
+            pr_details.json
+          retention-days: 30
