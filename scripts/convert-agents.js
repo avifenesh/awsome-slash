@@ -104,7 +104,6 @@ function convertToCodex(frontmatter, body) {
  * Main conversion function
  */
 async function main() {
-  // Parse command line arguments
   const args = process.argv.slice(2);
   const targetIndex = args.indexOf('--target');
   const inputIndex = args.indexOf('--input');
@@ -125,11 +124,9 @@ async function main() {
   }
 
   try {
-    // Read input file
     const content = await fs.readFile(inputPath, 'utf-8');
     const { frontmatter, body } = parseFrontmatter(content);
 
-    // Convert based on target
     let result;
     let outputFormat;
 
@@ -141,7 +138,6 @@ async function main() {
       outputFormat = 'yaml';
     }
 
-    // Prepare output
     let outputContent;
     if (outputFormat === 'json') {
       outputContent = JSON.stringify(result, null, 2);
@@ -149,7 +145,6 @@ async function main() {
       outputContent = yaml.dump(result, { indent: 2 });
     }
 
-    // Write output or print to stdout
     if (outputPath) {
       await fs.writeFile(outputPath, outputContent);
       console.log(`✓ Converted ${inputPath} to ${target} format`);
@@ -179,10 +174,8 @@ async function batchConvert() {
     }
 
     try {
-      // Create output directory if it doesn't exist
       await fs.mkdir(outputDir, { recursive: true });
 
-      // Read all .md files from input directory
       const files = await fs.readdir(inputDir);
       const mdFiles = files.filter(f => f.endsWith('.md'));
 
@@ -224,12 +217,10 @@ async function batchConvert() {
       process.exit(1);
     }
   } else {
-    // Single file mode
     await main();
   }
 }
 
-// Check if js-yaml is installed
 async function checkDependencies() {
   try {
     require('js-yaml');
@@ -240,7 +231,6 @@ async function checkDependencies() {
   }
 }
 
-// Run the script
 checkDependencies().then(() => {
   if (process.argv.includes('--batch')) {
     batchConvert();

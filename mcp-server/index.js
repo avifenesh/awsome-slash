@@ -243,7 +243,6 @@ const toolHandlers = {
       let tasks = [];
 
       if (taskSource === 'gh-issues') {
-        // Check if gh is available
         try {
           await execAsync('gh --version');
         } catch (error) {
@@ -256,21 +255,18 @@ const toolHandlers = {
           };
         }
 
-        // Fetch issues from GitHub
         const { stdout } = await execAsync(
           `gh issue list --state open --json number,title,labels,createdAt --limit ${maxTasks}`
         );
 
         const issues = JSON.parse(stdout || '[]');
 
-        // Apply filter if provided
         let filtered = issues;
         if (filter && filter !== 'all') {
           filtered = issues.filter(issue => {
             const labelNames = issue.labels.map(l => l.name.toLowerCase());
             const filterLower = filter.toLowerCase();
 
-            // Check if any label matches the filter
             return labelNames.some(label =>
               label.includes(filterLower) ||
               filterLower.includes(label)
@@ -278,7 +274,6 @@ const toolHandlers = {
           });
         }
 
-        // Transform to task format
         tasks = filtered.map(issue => ({
           id: `#${issue.number}`,
           title: issue.title,
@@ -289,7 +284,6 @@ const toolHandlers = {
         }));
 
       } else if (taskSource === 'tasks-md') {
-        // Read from TASKS.md or PLAN.md
         const possibleFiles = ['TASKS.md', 'PLAN.md', 'TODO.md'];
         let content = null;
         let foundFile = null;
@@ -300,12 +294,10 @@ const toolHandlers = {
             foundFile = file;
             break;
           } catch (e) {
-            // File doesn't exist, try next
           }
         }
 
         if (content) {
-          // Parse markdown for task items (lines starting with - [ ] or - [x])
           const lines = content.split('\n');
           const taskLines = lines.filter(line => /^[-*]\s+\[\s*\]\s+/.test(line));
 
@@ -323,7 +315,6 @@ const toolHandlers = {
             };
           });
 
-          // Apply filter if provided
           if (filter && filter !== 'all') {
             tasks = tasks.filter(task => task.type === filter.toLowerCase());
           }
@@ -371,20 +362,17 @@ const toolHandlers = {
     try {
       let filesToReview = files || [];
 
-      // If no files specified, get changed files from git
       if (!filesToReview.length) {
         try {
           const { stdout } = await execAsync('git diff --name-only HEAD');
           filesToReview = stdout.trim().split('\n').filter(f => f);
 
           if (!filesToReview.length) {
-            // No unstaged changes, check staged
             const { stdout: stagedOut } = await execAsync('git diff --cached --name-only');
             filesToReview = stagedOut.trim().split('\n').filter(f => f);
           }
 
           if (!filesToReview.length) {
-            // No changes at all, check last commit
             const { stdout: lastCommit } = await execAsync('git diff --name-only HEAD~1');
             filesToReview = lastCommit.trim().split('\n').filter(f => f);
           }
@@ -448,19 +436,16 @@ const toolHandlers = {
         }
       };
 
-      // Review each file
       for (const file of filesToReview) {
         try {
           const content = await fs.readFile(file, 'utf-8');
           const lines = content.split('\n');
           const fileFindings = [];
 
-          // Check each pattern
           for (const [name, check] of Object.entries(patterns)) {
             const matches = [...content.matchAll(check.pattern)];
 
             for (const match of matches) {
-              // Find line number
               const position = match.index;
               let lineNum = 1;
               let charCount = 0;
@@ -492,7 +477,6 @@ const toolHandlers = {
           }
 
         } catch (error) {
-          // File might not exist or be readable
           findings.push({
             file: file,
             error: `Could not read file: ${error.message}`
@@ -500,9 +484,8 @@ const toolHandlers = {
         }
       }
 
-      // Prepare summary
       const totalIssues = findings.reduce((sum, f) => sum + (f.issues?.length || 0), 0);
-      const bySecvity = {
+      const bySeverity = {
         error: findings.flatMap(f => f.issues || []).filter(i => i.severity === 'error').length,
         warning: findings.flatMap(f => f.issues || []).filter(i => i.severity === 'warning').length,
         info: findings.flatMap(f => f.issues || []).filter(i => i.severity === 'info').length
@@ -514,7 +497,7 @@ const toolHandlers = {
           text: JSON.stringify({
             filesReviewed: filesToReview.length,
             totalIssues: totalIssues,
-            bySeverity: bySecvity,
+            bySeverity: bySeverity,
             findings: findings
           }, null, 2)
         }]
