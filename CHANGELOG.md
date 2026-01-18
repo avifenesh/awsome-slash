@@ -21,6 +21,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Warnings appear once per function with migration guidance
   - **Sync functions will be removed in v3.0.0**
 
+## [2.4.4] - 2026-01-18
+
+### Added
+- **PR Auto-Review Process** - Added mandatory workflow for 4 auto-reviewers (Copilot, Claude, Gemini, Codex)
+- **Agent Responsibilities** - Documented required tools and MUST-CALL agents for /next-task and /ship
+- **CLAUDE.md Enhancement** - Comprehensive agent workflow documentation with tool restrictions
+
+### Changed
+- Updated ci-monitor.md with 4-reviewer process details
+- Updated ship-ci-review-loop.md with PR auto-review section
+
 ## [2.4.3] - 2026-01-18
 
 ### Added

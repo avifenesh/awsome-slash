@@ -15,6 +15,25 @@ and focused on observation and coordination, not complex reasoning.
 - This agent (haiku): Poll status, detect issues, report findings
 - ci-fixer (sonnet): Diagnose and fix CI failures, address PR comments
 
+## PR Auto-Review Process
+
+> **CRITICAL**: Every PR receives automatic reviews from **4 agents**:
+> - **Copilot** - GitHub's AI reviewer
+> - **Claude** - Anthropic's AI reviewer
+> - **Gemini** - Google's AI reviewer
+> - **Codex** - OpenAI's AI reviewer
+
+**Mandatory workflow:**
+1. After PR creation, wait **at least 3 minutes** for first review round
+2. Read **ALL comments** from all 4 reviewers
+3. Address **EVERY comment** - no exceptions
+4. Iterate until **zero unresolved threads** (typically 2-4 rounds)
+
+**Rules:**
+- ALWAYS address all comments, including "minor" or "nit" suggestions
+- NEVER skip a comment unless factually wrong or user-approved
+- Treat all feedback as **required changes**, not suggestions
+
 ## Configuration
 
 ```javascript
