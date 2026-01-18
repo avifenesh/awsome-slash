@@ -238,8 +238,13 @@ function updateFlow(updates, worktreePath = process.cwd()) {
 
 /**
  * Create initial flow for a new task
+ * Also registers the task as active in the main project's tasks.json
+ * @param {Object} task - Task object with id, title, source, url
+ * @param {Object} policy - Policy object with stoppingPoint
+ * @param {string} worktreePath - Path to worktree
+ * @param {string} projectPath - Path to main project (for tasks.json registration)
  */
-function createFlow(task, policy, worktreePath = process.cwd()) {
+function createFlow(task, policy, worktreePath = process.cwd(), projectPath = null) {
   const flow = {
     task: {
       id: task.id,
@@ -260,10 +265,23 @@ function createFlow(task, policy, worktreePath = process.cwd()) {
     },
     pr: null,
     exploration: null,
-    plan: null
+    plan: null,
+    // Store projectPath so completeWorkflow knows where to clear the task
+    projectPath: projectPath
   };
 
   writeFlow(flow, worktreePath);
+
+  // Register task as active in main project
+  if (projectPath) {
+    setActiveTask({
+      taskId: task.id,
+      title: task.title,
+      worktree: worktreePath,
+      branch: flow.git.branch
+    }, projectPath);
+  }
+
   return flow;
 }
 
@@ -388,14 +406,15 @@ function failWorkflow(error, worktreePath = process.cwd()) {
 
 /**
  * Mark workflow as complete
- * Also clears the active task from tasks.json in the main project
+ * Automatically clears the active task from tasks.json using stored projectPath
  * @param {string} worktreePath - Path to worktree
- * @param {string} projectPath - Path to main project (for clearing active task)
  */
-function completeWorkflow(worktreePath = process.cwd(), projectPath = null) {
-  // If projectPath provided, clear the active task
-  if (projectPath) {
-    clearActiveTask(projectPath);
+function completeWorkflow(worktreePath = process.cwd()) {
+  const flow = readFlow(worktreePath);
+
+  // Clear active task from main project if projectPath is stored
+  if (flow && flow.projectPath) {
+    clearActiveTask(flow.projectPath);
   }
 
   return updateFlow({
@@ -407,11 +426,20 @@ function completeWorkflow(worktreePath = process.cwd(), projectPath = null) {
 
 /**
  * Abort workflow
+ * Also clears the active task from tasks.json using stored projectPath
  */
 function abortWorkflow(reason, worktreePath = process.cwd()) {
+  const flow = readFlow(worktreePath);
+
+  // Clear active task from main project if projectPath is stored
+  if (flow && flow.projectPath) {
+    clearActiveTask(flow.projectPath);
+  }
+
   return updateFlow({
     status: 'aborted',
-    abortReason: reason
+    abortReason: reason,
+    abortedAt: new Date().toISOString()
   }, worktreePath);
 }
 
