@@ -75,14 +75,51 @@ const sourceType = sourceConfig.source || sourceConfig;
 
 ### GitHub Issues
 
+**IMPORTANT**: GitHub CLI defaults to 30 issues. For repos with many issues, use `--limit`
+and consider filtering by label to reduce noise. If you hit the limit, iterate with
+pagination or apply stricter label filters.
+
 ```bash
 if [ "$SOURCE_TYPE" = "github" ] || [ "$SOURCE_TYPE" = "gh-issues" ]; then
-  gh issue list --state open \
-    --json number,title,body,labels,assignees,createdAt,url \
-    --limit 100 > /tmp/gh-issues.json
+  # First, get total count to check if pagination needed
+  TOTAL_OPEN=$(gh issue list --state open --json number --jq 'length')
+  echo "Total open issues: $TOTAL_OPEN"
 
-  ISSUE_COUNT=$(cat /tmp/gh-issues.json | jq length)
+  # If many issues exist, filter by priority labels first
+  if [ "$TOTAL_OPEN" -gt 100 ]; then
+    echo "Large backlog detected. Fetching high-priority issues first..."
+
+    # Fetch by priority labels (adjust labels to match repo conventions)
+    gh issue list --state open \
+      --label "priority:high,priority:critical,bug,security" \
+      --json number,title,body,labels,assignees,createdAt,url \
+      --limit 100 > /tmp/gh-issues.json
+
+    ISSUE_COUNT=$(cat /tmp/gh-issues.json | jq length)
+
+    # If still not enough, fetch more without label filter
+    if [ "$ISSUE_COUNT" -lt 20 ]; then
+      echo "Few priority issues found. Fetching recent issues..."
+      gh issue list --state open \
+        --json number,title,body,labels,assignees,createdAt,url \
+        --limit 100 > /tmp/gh-issues.json
+      ISSUE_COUNT=$(cat /tmp/gh-issues.json | jq length)
+    fi
+  else
+    # Small backlog - fetch all
+    gh issue list --state open \
+      --json number,title,body,labels,assignees,createdAt,url \
+      --limit 100 > /tmp/gh-issues.json
+    ISSUE_COUNT=$(cat /tmp/gh-issues.json | jq length)
+  fi
+
   echo "Fetched $ISSUE_COUNT issues from GitHub"
+
+  # Warn if at limit
+  if [ "$ISSUE_COUNT" -eq 100 ]; then
+    echo "WARNING: Hit 100 issue limit. Some issues may not be included."
+    echo "Consider using priority filter to narrow scope."
+  fi
 fi
 ```
 
