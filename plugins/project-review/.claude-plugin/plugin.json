@@ -1,6 +1,6 @@
 {
   "name": "project-review",
-  "version": "2.4.8",
+  "version": "2.5.0",
   "description": "Multi-agent iterative code review until zero issues remain",
   "author": {
     "name": "Avi Fenesh",

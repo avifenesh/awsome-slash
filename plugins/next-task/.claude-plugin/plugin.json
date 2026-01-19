@@ -1,6 +1,6 @@
 {
   "name": "next-task",
-  "version": "2.4.8",
+  "version": "2.5.0",
   "description": "Master workflow orchestrator with autonomous task-to-production automation, quality gates, and multi-agent review",
   "author": {
     "name": "Avi Fenesh",

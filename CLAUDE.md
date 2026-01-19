@@ -25,17 +25,17 @@ When releasing a new version, update **ALL** these locations:
 
 | File | Location | Example |
 |------|----------|---------|
-| `package.json` | `"version": "X.Y.Z"` | `"version": "2.4.8"` |
-| `README.md` | Version badge | `version-2.4.8-blue` |
+| `package.json` | `"version": "X.Y.Z"` | `"version": "2.5.0"` |
+| `README.md` | Version badge | `version-2.5.0-blue` |
 | `README.md` | "What's New" section | Add new version section |
-| `.claude-plugin/plugin.json` | `"version": "X.Y.Z"` | `"version": "2.4.8"` |
+| `.claude-plugin/plugin.json` | `"version": "X.Y.Z"` | `"version": "2.5.0"` |
 | `.claude-plugin/marketplace.json` | `"version"` (appears 6x) | All version fields |
-| `plugins/next-task/.claude-plugin/plugin.json` | `"version": "X.Y.Z"` | `"version": "2.4.8"` |
-| `plugins/ship/.claude-plugin/plugin.json` | `"version": "X.Y.Z"` | `"version": "2.4.8"` |
-| `plugins/deslop-around/.claude-plugin/plugin.json` | `"version": "X.Y.Z"` | `"version": "2.4.8"` |
-| `plugins/project-review/.claude-plugin/plugin.json` | `"version": "X.Y.Z"` | `"version": "2.4.8"` |
-| `plugins/reality-check/.claude-plugin/plugin.json` | `"version": "X.Y.Z"` | `"version": "2.4.8"` |
-| `CHANGELOG.md` | New entry at top | `## [2.4.8] - YYYY-MM-DD` |
+| `plugins/next-task/.claude-plugin/plugin.json` | `"version": "X.Y.Z"` | `"version": "2.5.0"` |
+| `plugins/ship/.claude-plugin/plugin.json` | `"version": "X.Y.Z"` | `"version": "2.5.0"` |
+| `plugins/deslop-around/.claude-plugin/plugin.json` | `"version": "X.Y.Z"` | `"version": "2.5.0"` |
+| `plugins/project-review/.claude-plugin/plugin.json` | `"version": "X.Y.Z"` | `"version": "2.5.0"` |
+| `plugins/reality-check/.claude-plugin/plugin.json` | `"version": "X.Y.Z"` | `"version": "2.5.0"` |
+| `CHANGELOG.md` | New entry at top | `## [2.5.0] - YYYY-MM-DD` |
 
 **Version Types:**
 - **Patch (x.x.X)**: Bug fixes, security patches, docs updates
