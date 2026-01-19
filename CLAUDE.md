@@ -6,6 +6,44 @@ See @README.md for project overview and @CONTRIBUTING.md for guidelines.
 
 ---
 
+## ⚠️ Production Project Notice
+
+**This project has real users and GitHub stars.** Every change impacts developers relying on this plugin for their workflows.
+
+**Exercise extra caution:**
+- Test thoroughly before pushing
+- Consider backwards compatibility
+- Don't break existing functionality
+- Security vulnerabilities affect all users
+- Breaking changes require major version bumps
+
+---
+
+## Version Update Checklist
+
+When releasing a new version, update **ALL** these locations:
+
+| File | Location | Example |
+|------|----------|---------|
+| `package.json` | `"version": "X.Y.Z"` | `"version": "2.5.0"` |
+| `README.md` | Version badge | `version-2.5.0-blue` |
+| `README.md` | "What's New" section | Add new version section |
+| `.claude-plugin/plugin.json` | `"version": "X.Y.Z"` | `"version": "2.5.0"` |
+| `.claude-plugin/marketplace.json` | `"version"` (appears 6x) | All version fields |
+| `plugins/next-task/.claude-plugin/plugin.json` | `"version": "X.Y.Z"` | `"version": "2.5.0"` |
+| `plugins/ship/.claude-plugin/plugin.json` | `"version": "X.Y.Z"` | `"version": "2.5.0"` |
+| `plugins/deslop-around/.claude-plugin/plugin.json` | `"version": "X.Y.Z"` | `"version": "2.5.0"` |
+| `plugins/project-review/.claude-plugin/plugin.json` | `"version": "X.Y.Z"` | `"version": "2.5.0"` |
+| `plugins/reality-check/.claude-plugin/plugin.json` | `"version": "X.Y.Z"` | `"version": "2.5.0"` |
+| `CHANGELOG.md` | New entry at top | `## [2.5.0] - YYYY-MM-DD` |
+
+**Version Types:**
+- **Patch (x.x.X)**: Bug fixes, security patches, docs updates
+- **Minor (x.X.0)**: New features, non-breaking changes
+- **Major (X.0.0)**: Breaking changes, API changes
+
+---
+
 ## Project Purpose & Development Philosophy
 
 ### What This Project Is
@@ -88,8 +126,8 @@ The main orchestrator **MUST spawn these agents in order**:
 
 | Phase | Agent | Model | Required Tools | Purpose |
 |-------|-------|-------|----------------|---------|
-| 1 | `policy-selector` | haiku | AskUserQuestion | Configure workflow policy |
-| 2 | `task-discoverer` | sonnet | Bash(gh:*), Read | Find and prioritize tasks |
+| 1 | *(orchestrator)* | - | AskUserQuestion | Configure workflow policy (direct questions) |
+| 2 | `task-discoverer` | sonnet | Bash(gh:*), Bash(glab:*), Read | Find and prioritize tasks |
 | 3 | `worktree-manager` | haiku | Bash(git:*) | Create isolated worktree |
 | 4 | `exploration-agent` | opus | Read, Grep, Glob, LSP, Task | Deep codebase analysis |
 | 5 | `planning-agent` | opus | Read, Grep, Glob, Bash(git:*), Task | Design implementation plan |
@@ -158,7 +196,6 @@ The ship command **MUST execute these phases**:
 
 | Agent | Allowed Tools | Disallowed |
 |-------|---------------|------------|
-| policy-selector | AskUserQuestion | Write, Edit |
 | worktree-manager | Bash(git:*) | Write, Edit |
 | ci-monitor | Bash(gh:*), Read, Task | Write, Edit |
 | simple-fixer | Read, Edit, Bash(git:*) | Task |

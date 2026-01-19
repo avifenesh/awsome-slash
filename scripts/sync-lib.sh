@@ -44,7 +44,7 @@ for plugin in "${PLUGINS[@]}"; do
   PLUGIN_LIB="$REPO_ROOT/plugins/$plugin/lib"
 
   # Create lib directory structure
-  mkdir -p "$PLUGIN_LIB"/{platform,patterns,utils}
+  mkdir -p "$PLUGIN_LIB"/{platform,patterns,utils,sources,state}
 
   # Copy all lib files using explicit iteration for safety
   for item in "${REPO_ROOT}/lib"/*; do

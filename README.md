@@ -6,11 +6,23 @@ A cross-platform plugin providing powerful, zero-configuration slash commands fo
 
 [![npm](https://img.shields.io/npm/v/awesome-slash?color=red)](https://www.npmjs.com/package/awesome-slash)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-2.4.7-blue)](https://github.com/avifenesh/awesome-slash/releases)
+[![Version](https://img.shields.io/badge/version-2.5.0-blue)](https://github.com/avifenesh/awesome-slash/releases)
 [![GitHub stars](https://img.shields.io/github/stars/avifenesh/awesome-slash?style=flat&color=yellow)](https://github.com/avifenesh/awesome-slash/stargazers)
 [![Claude Code](https://img.shields.io/badge/Claude-Code%20Plugin-blue)](https://docs.anthropic.com/en/docs/claude-code)
 [![Codex CLI](https://img.shields.io/badge/Codex-CLI%20Compatible-green)](https://developers.openai.com/codex/cli)
 [![OpenCode](https://img.shields.io/badge/OpenCode-Compatible-orange)](https://opencode.ai)
+
+> **📋 Disclaimer**: This project originated from personal workflow needs and was made public due to its effective delivery. Usage is entirely at your own responsibility. The maintainers make no guarantees about fitness for any particular purpose. Context/token efficiency has not been formally benchmarked.
+
+> **💡 Model Recommendation**: Using **Opus** as the main agent model produces significantly better results and follows workflow phases more tightly. While Sonnet works for simpler tasks, Opus is recommended for complex multi-step workflows.
+
+## What's New in v2.5.0
+
+- **Multi-Source Task Discovery** - Support for GitHub, GitLab, local files, custom CLI tools, and ad-hoc sources
+- **Source Preference Caching** - Your last-used source appears first on subsequent runs
+- **Security Hardening** - Fixed command injection and path traversal vulnerabilities
+- **Large Backlog Handling** - Intelligent pagination and priority filtering for repos with many issues
+- **Streamlined Policy Selection** - Direct questions from orchestrator, removed separate agent
 
 ## What's New in v2.4.7
 
@@ -80,6 +92,15 @@ Complete task-to-production automation with state management and resume capabili
 - review-orchestrator
 - delivery-validator
 - docs-updater
+
+**Task Sources:**
+- **GitHub Issues** - Uses `gh` CLI (handles large backlogs with priority filtering)
+- **GitLab Issues** - Uses `glab` CLI
+- **Local files** - Reads from PLAN.md, tasks.md, or TODO.md
+- **Custom CLI** - Any CLI tool (tea, jira-cli, etc.) with auto-discovery
+- **Other** - Describe your source and the agent figures it out
+
+Your source preference is cached in `.claude/sources/preference.json` for fast subsequent runs.
 
 **Notes:**
 - Fully autonomous after plan approval
@@ -222,7 +243,7 @@ See [docs/CROSS_PLATFORM.md](./docs/CROSS_PLATFORM.md) for details.
 
 ### State Management
 
-Simple state tracking with two files:
+Simple state tracking with three locations:
 
 **Main project: `.claude/tasks.json`** - Tracks active worktree/task:
 ```json
@@ -249,7 +270,17 @@ Simple state tracking with two files:
 }
 ```
 
-### Specialist Agents (18 Total)
+**Source Preferences: `.claude/sources/preference.json`** - Caches task source selection:
+```json
+{
+  "source": "custom",
+  "type": "cli",
+  "tool": "tea",
+  "savedAt": "2025-01-19T08:00:00.000Z"
+}
+```
+
+### Specialist Agents (17 Total)
 
 **Core Workflow (Opus - Complex Tasks):**
 | Agent | Purpose |
@@ -270,8 +301,7 @@ Simple state tracking with two files:
 **Operational (Sonnet - Infrastructure):**
 | Agent | Purpose |
 |-------|---------|
-| policy-selector | Configure workflow policy |
-| task-discoverer | Find and prioritize tasks |
+| task-discoverer | Find and prioritize tasks (multi-source) |
 | worktree-manager | Create isolated worktrees |
 | ci-monitor | Monitor CI/PR status with sleep loops |
 | ci-fixer | Fix CI failures and review comments |
@@ -305,6 +335,7 @@ awesome-slash/
 |-- lib/
 |   |-- config/                # Configuration management
 |   |-- state/                 # Workflow state management
+|   |-- sources/               # Multi-source task discovery
 |   |-- platform/              # Auto-detection
 |   |-- patterns/              # Code analysis patterns
 |   |-- utils/                 # Shell escaping and context optimization

@@ -351,31 +351,70 @@ function mapStepToPhase(step) {
 }
 ```
 
-## Phase 1: Policy Selection
+## Phase 1: Policy Selection (Direct Questions)
 
-→ **Agent**: `next-task:policy-selector` (haiku)
+No agent needed - call `sources.getPolicyQuestions()` and use AskUserQuestion.
 
 ```javascript
-workflowState.startPhase('policy-selection');
+const { sources } = require('${CLAUDE_PLUGIN_ROOT}/lib');
 
-await Task({
-  subagent_type: "next-task:policy-selector",
-  prompt: `Configure workflow via checkbox selection. Gather: task source, priority filter, stopping point.`
+// Get questions with cache-aware options (cached preference shown first if exists)
+const { questions, cachedPreference } = sources.getPolicyQuestions();
+
+// Ask all 3 questions at once
+AskUserQuestion({ questions });
+
+// After user responds, check if follow-up needed
+if (sources.needsCustomFollowUp(sourceAnswer)) {
+  // Custom: ask type (CLI/MCP/Skill/File)
+  AskUserQuestion(sources.getCustomTypeQuestions());
+
+  // Then ask for name/path
+  const typeInternal = sources.mapTypeSelection(typeAnswer);
+  AskUserQuestion(sources.getCustomNameQuestion(typeInternal));
+}
+
+if (sources.needsOtherDescription(sourceAnswer)) {
+  // Other: user types free description (via "Other" option in AskUserQuestion)
+}
+
+// Parse responses and cache preference
+const policy = sources.parseAndCachePolicy({
+  source: sourceAnswer,
+  priority: priorityAnswer,
+  stopPoint: stopPointAnswer,
+  custom: { type: typeAnswer, name: nameAnswer, description: otherDescription }
 });
 
-// Policy now in state
+workflowState.updateFlow({ policy, phase: 'task-discovery', status: 'in_progress' });
 ```
+
+**What the lib function handles:**
+- Reads cache from `.claude/sources/preference.json`
+- If cached, shows it as first option with "(last used)" label
+- Returns ready-to-use AskUserQuestion structure
+- `parseAndCachePolicy()` saves preference for next time
 
 ## Phase 2: Task Discovery
 
-→ **Agent**: `next-task:task-discoverer` (inherit)
+→ **Agent**: `next-task:task-discoverer` (sonnet)
+
+The task-discoverer receives the source configuration from policy and handles:
+- **github**: Uses `gh issue list`
+- **gitlab**: Uses `glab issue list`
+- **local**: Reads `tasks.md`, `PLAN.md`, or `TODO.md`
+- **custom**: Uses cached tool capabilities (e.g., `tea issues list` for Gitea)
+- **other**: Agent interprets user's description and figures out how to list tasks
 
 ```javascript
 workflowState.startPhase('task-discovery');
 
+// Pass full source config to task-discoverer
+const sourceConfig = policy.taskSource;
+
 await Task({
   subagent_type: "next-task:task-discoverer",
-  prompt: `Discover tasks from ${policy.taskSource}, filter by ${policy.priorityFilter}. Present top 5 to user for selection.`
+  prompt: `Discover tasks from source: ${JSON.stringify(sourceConfig)}. Filter by: ${policy.priorityFilter}. Present top 5 to user for selection.`
 });
 
 // Selected task now in state.task

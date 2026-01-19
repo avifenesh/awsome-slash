@@ -1,26 +1,4 @@
 # Code Owners
-# Each line is a file pattern followed by one or more owners.
-# These owners will be the default owners for everything in the repo.
-# They will be requested for review when someone opens a pull request.
+# Default owner for everything in the repo
 
 * @avifenesh
-
-# Platform detection and core infrastructure
-/lib/platform/ @avifenesh
-/lib/utils/ @avifenesh
-/lib/patterns/ @avifenesh
-/lib/validators/ @avifenesh
-
-# Commands
-/commands/ @avifenesh
-
-# Plugin configuration
-/.claude-plugin/ @avifenesh
-
-# Documentation
-/docs/ @avifenesh
-/README.md @avifenesh
-/CONTRIBUTING.md @avifenesh
-
-# Tests
-/tests/ @avifenesh

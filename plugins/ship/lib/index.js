@@ -18,6 +18,9 @@ const workflowState = require('./state/workflow-state');
 const contextOptimizer = require('./utils/context-optimizer');
 const shellEscape = require('./utils/shell-escape');
 const config = require('./config');
+const sourceCache = require('./sources/source-cache');
+const customHandler = require('./sources/custom-handler');
+const policyQuestions = require('./sources/policy-questions');
 
 /**
  * Platform detection and verification utilities
@@ -115,6 +118,35 @@ const utils = {
   shellEscape
 };
 
+/**
+ * Task source management
+ * @see module:sources/source-cache
+ * @see module:sources/custom-handler
+ * @see module:sources/policy-questions
+ */
+const sources = {
+  // Main entry point - returns ready-to-use question structure
+  getPolicyQuestions: policyQuestions.getPolicyQuestions,
+  getCustomTypeQuestions: policyQuestions.getCustomTypeQuestions,
+  getCustomNameQuestion: policyQuestions.getCustomNameQuestion,
+  parseAndCachePolicy: policyQuestions.parseAndCachePolicy,
+  isUsingCached: policyQuestions.isUsingCached,
+  needsCustomFollowUp: policyQuestions.needsCustomFollowUp,
+  needsOtherDescription: policyQuestions.needsOtherDescription,
+
+  // Cache operations (direct access if needed)
+  getPreference: sourceCache.getPreference,
+  savePreference: sourceCache.savePreference,
+  getToolCapabilities: sourceCache.getToolCapabilities,
+  saveToolCapabilities: sourceCache.saveToolCapabilities,
+  clearCache: sourceCache.clearCache,
+
+  // Custom source handling (direct access if needed)
+  SOURCE_TYPES: customHandler.SOURCE_TYPES,
+  probeCLI: customHandler.probeCLI,
+  buildCustomConfig: customHandler.buildCustomConfig
+};
+
 // Main exports
 module.exports = {
   platform,
@@ -122,6 +154,7 @@ module.exports = {
   state,
   utils,
   config,
+  sources,
 
   // Direct module access for backward compatibility
   detectPlatform,
@@ -130,5 +163,8 @@ module.exports = {
   slopPatterns,
   workflowState,
   contextOptimizer,
-  shellEscape
+  shellEscape,
+  sourceCache,
+  customHandler,
+  policyQuestions
 };

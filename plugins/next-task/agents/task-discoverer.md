@@ -1,8 +1,8 @@
 ---
 name: task-discoverer
 description: Discover and prioritize tasks from configured sources. CRITICAL - You MUST use AskUserQuestion tool to present task selection as checkboxes. This agent is invoked after policy selection to find, score, and let the user select the next task to work on via structured checkbox UI.
-tools: Bash(gh:*), Bash(git:*), Grep, Read, AskUserQuestion
-model: opus
+tools: Bash(gh:*), Bash(glab:*), Bash(git:*), Grep, Read, AskUserQuestion
+model: sonnet
 ---
 
 # Task Discoverer Agent
@@ -53,35 +53,93 @@ if (claimedTasks.length > 0) {
 
 ## Phase 3: Fetch Tasks by Source
 
+The source configuration comes from policy. It can be:
+- `"github"` or `"gh-issues"` - Use GitHub CLI
+- `"gitlab"` - Use GitLab CLI
+- `"local"` or `"tasks-md"` - Read local markdown files
+- `{ source: "custom", type: "cli", tool: "tea" }` - Custom CLI tool
+- `{ source: "other", description: "..." }` - Agent interprets description
+
+### Parse Source Configuration
+
+```javascript
+const { sources } = require('${CLAUDE_PLUGIN_ROOT}/lib');
+
+// Source can be string or object
+const sourceConfig = typeof policy.taskSource === 'string'
+  ? { source: policy.taskSource }
+  : policy.taskSource;
+
+const sourceType = sourceConfig.source || sourceConfig;
+```
+
 ### GitHub Issues
 
-```bash
-if [ "$TASK_SOURCE" = "gh-issues" ]; then
-  gh issue list --state open \
-    --json number,title,body,labels,assignees,createdAt,url \
-    --limit 100 > /tmp/gh-issues.json
+**IMPORTANT**: GitHub CLI defaults to 30 issues. For repos with many issues, use `--limit`
+and consider filtering by label to reduce noise. If you hit the limit, iterate with
+pagination or apply stricter label filters.
 
-  ISSUE_COUNT=$(cat /tmp/gh-issues.json | jq length)
+```bash
+if [ "$SOURCE_TYPE" = "github" ] || [ "$SOURCE_TYPE" = "gh-issues" ]; then
+  # First, get total count to check if pagination needed
+  TOTAL_OPEN=$(gh issue list --state open --json number --jq 'length')
+  echo "Total open issues: $TOTAL_OPEN"
+
+  # If many issues exist, filter by priority labels first
+  if [ "$TOTAL_OPEN" -gt 100 ]; then
+    echo "Large backlog detected. Fetching high-priority issues first..."
+
+    # Fetch by priority labels (adjust labels to match repo conventions)
+    gh issue list --state open \
+      --label "priority:high,priority:critical,bug,security" \
+      --json number,title,body,labels,assignees,createdAt,url \
+      --limit 100 > /tmp/gh-issues.json
+
+    ISSUE_COUNT=$(cat /tmp/gh-issues.json | jq length)
+
+    # If still not enough, fetch more without label filter
+    if [ "$ISSUE_COUNT" -lt 20 ]; then
+      echo "Few priority issues found. Fetching recent issues..."
+      gh issue list --state open \
+        --json number,title,body,labels,assignees,createdAt,url \
+        --limit 100 > /tmp/gh-issues.json
+      ISSUE_COUNT=$(cat /tmp/gh-issues.json | jq length)
+    fi
+  else
+    # Small backlog - fetch all
+    gh issue list --state open \
+      --json number,title,body,labels,assignees,createdAt,url \
+      --limit 100 > /tmp/gh-issues.json
+    ISSUE_COUNT=$(cat /tmp/gh-issues.json | jq length)
+  fi
+
   echo "Fetched $ISSUE_COUNT issues from GitHub"
+
+  # Warn if at limit
+  if [ "$ISSUE_COUNT" -eq 100 ]; then
+    echo "WARNING: Hit 100 issue limit. Some issues may not be included."
+    echo "Consider using priority filter to narrow scope."
+  fi
 fi
 ```
 
-### Linear (via GitHub links)
+### GitLab Issues
 
 ```bash
-if [ "$TASK_SOURCE" = "linear" ]; then
-  # Extract Linear IDs from GitHub issue bodies
-  gh issue list --state open --json body,number,title --limit 50 | \
-    jq -r '.[] | select(.body | contains("linear.app")) |
-           {number, title, linearUrl: (.body | capture("https://linear.app/[^\\s]+") | .linearUrl)}' \
-    > /tmp/linear-tasks.json
+if [ "$SOURCE_TYPE" = "gitlab" ]; then
+  glab issue list --state opened \
+    --output json \
+    --per-page 100 > /tmp/glab-issues.json
+
+  ISSUE_COUNT=$(cat /tmp/glab-issues.json | jq length)
+  echo "Fetched $ISSUE_COUNT issues from GitLab"
 fi
 ```
 
-### PLAN.md / tasks.md
+### Local tasks.md
 
 ```bash
-if [ "$TASK_SOURCE" = "tasks-md" ]; then
+if [ "$SOURCE_TYPE" = "local" ] || [ "$SOURCE_TYPE" = "tasks-md" ]; then
   # Find task files
   TASK_FILE=""
   for f in PLAN.md tasks.md TODO.md; do
@@ -98,6 +156,85 @@ if [ "$TASK_SOURCE" = "tasks-md" ]; then
       sed 's/$/"}/g' > /tmp/file-tasks.json
   fi
 fi
+```
+
+### Custom Source (CLI/MCP/Skill)
+
+For custom sources, use cached tool capabilities:
+
+```javascript
+if (sourceConfig.source === 'custom') {
+  const toolName = sourceConfig.tool;
+  const toolType = sourceConfig.type;
+
+  // Load cached capabilities
+  let capabilities = sources.getToolCapabilities(toolName);
+
+  // If not cached, probe the tool
+  if (!capabilities && toolType === 'cli') {
+    capabilities = sources.probeCLI(toolName);
+    if (capabilities.available) {
+      sources.saveToolCapabilities(toolName, capabilities);
+    }
+  }
+
+  if (capabilities?.commands?.list_issues) {
+    // Execute the list_issues command
+    const cmd = capabilities.commands.list_issues;
+    console.log(`Executing: ${cmd}`);
+    // Run command and parse output
+  } else if (toolType === 'mcp') {
+    // Call MCP tool
+    console.log(`Calling MCP server: ${toolName}`);
+    // MCP call logic
+  } else if (toolType === 'skill') {
+    // Invoke skill
+    console.log(`Invoking skill: ${toolName}`);
+    // Skill invocation logic
+  } else {
+    console.log(`Unknown custom source type: ${toolType}`);
+    console.log(`Tool: ${toolName}`);
+    console.log(`Attempting generic help: ${toolName} --help`);
+  }
+}
+```
+
+### Other Source (Agent Interprets)
+
+For "other" sources, the agent interprets the user's description:
+
+```javascript
+if (sourceConfig.source === 'other') {
+  const description = sourceConfig.description;
+
+  console.log(`User described task source: ${description}`);
+  console.log('');
+  console.log('Interpreting description to find tasks...');
+
+  // Agent uses reasoning to figure out how to list tasks
+  // Common patterns to try:
+  // - "Jira" → check for jira CLI or MCP
+  // - "Linear" → check for linear CLI or MCP
+  // - "Notion" → check for notion MCP
+  // - "file at /path" → read that file
+  // - "backlog.md" → read that file
+
+  // If can't figure it out, ask user for clarification
+  if (!tasksFound) {
+    AskUserQuestion({
+      questions: [{
+        header: 'Clarify Source',
+        question: `I couldn't automatically find tasks from "${description}". How should I access them?`,
+        options: [
+          { label: 'CLI Command', description: 'Provide a command to list tasks' },
+          { label: 'File Path', description: 'Provide path to task file' },
+          { label: 'MCP Server', description: 'Specify MCP server name' }
+        ],
+        multiSelect: false
+      }]
+    });
+  }
+}
 ```
 
 ## Phase 4: Exclude Claimed Tasks
@@ -352,10 +489,10 @@ fi
 - State updated with task details
 - Phase advanced to worktree-setup
 
-## Model Choice: Inherit
+## Model Choice: Sonnet
 
-This agent uses **inherit** because:
-- Complexity varies by calling context
-- When called from orchestrator (sonnet), inherits sonnet
-- Simple task fetching doesn't need opus
-- Allows flexibility without over-specifying
+This agent uses **sonnet** because:
+- Needs reasoning for "other" source interpretation
+- Custom source handling requires some intelligence
+- Simple enough that opus would be overkill
+- Fast response for interactive task selection
