@@ -269,7 +269,7 @@ Simple state tracking with two files:
 }
 ```
 
-### Specialist Agents (18 Total)
+### Specialist Agents (17 Total)
 
 **Core Workflow (Opus - Complex Tasks):**
 | Agent | Purpose |
@@ -290,8 +290,7 @@ Simple state tracking with two files:
 **Operational (Sonnet - Infrastructure):**
 | Agent | Purpose |
 |-------|---------|
-| policy-selector | Configure workflow policy |
-| task-discoverer | Find and prioritize tasks |
+| task-discoverer | Find and prioritize tasks (multi-source) |
 | worktree-manager | Create isolated worktrees |
 | ci-monitor | Monitor CI/PR status with sleep loops |
 | ci-fixer | Fix CI failures and review comments |
