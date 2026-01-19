@@ -49,6 +49,14 @@ Please include:
 3. **Deployment Caution:** Validate deployments before shipping to production
 4. **PR Reviews:** Use `/project-review` quality gates to catch security issues
 
+### Security Hardening (v2.5.0+)
+
+The plugin includes protections against common vulnerabilities:
+
+- **Command Injection Prevention:** Uses `execFileSync` instead of `execSync` for external tool probing, with strict input validation
+- **Path Traversal Prevention:** Tool names and file paths are validated with allowlist patterns (`/^[a-zA-Z0-9_-]+$/`)
+- **Input Validation:** All user-provided tool names are sanitized before use in file operations or command execution
+
 ### Platform Detection Scripts
 
 The platform detection scripts in `lib/` execute shell commands. They:
