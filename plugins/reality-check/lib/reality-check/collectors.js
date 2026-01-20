@@ -160,6 +160,9 @@ function scanGitHubState(options = {}) {
 
 /**
  * Categorize issues by labels
+ *
+ * Uses word-boundary matching to avoid false positives (e.g., "debug" won't match "bug").
+ * Patterns are checked with word boundaries so "bug-fix" matches "bug" but "debug" does not.
  */
 function categorizeIssues(result, issues) {
   const labelMap = {
@@ -172,12 +175,19 @@ function categorizeIssues(result, issues) {
     'type: security': 'security'
   };
 
+  // Create regex patterns with word boundaries for more precise matching
+  const labelPatterns = Object.entries(labelMap).map(([pattern, category]) => ({
+    // Match pattern at word boundary (start/end of string, space, hyphen, colon, etc.)
+    regex: new RegExp(`(^|[^a-z])${pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z]|$)`, 'i'),
+    category
+  }));
+
   for (const issue of issues) {
     const labels = (issue.labels || []).map(l => (l.name || l).toLowerCase());
     let categorized = false;
 
-    for (const [pattern, category] of Object.entries(labelMap)) {
-      if (labels.some(l => l.includes(pattern))) {
+    for (const { regex, category } of labelPatterns) {
+      if (labels.some(l => regex.test(l))) {
         result.categorized[category].push(issue);
         categorized = true;
         break;

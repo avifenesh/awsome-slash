@@ -246,16 +246,22 @@ Just some description without installation or usage.
   });
 
   describe('scanGitHubState', () => {
-    test('returns error when gh not available', () => {
-      // This test will behave differently based on whether gh is installed
-      const result = scanGitHubState({ cwd: testDir });
-
-      if (!result.available) {
-        expect(result.error).toBeDefined();
-        expect(result.issues).toEqual([]);
-        expect(result.prs).toEqual([]);
+    test('returns expected structure when gh not available', () => {
+      // Skip this test if gh IS available (we test that case separately)
+      const ghAvailable = isGhAvailable();
+      if (ghAvailable) {
+        // When gh is available, we can't test the "unavailable" path
+        // without mocking, so we skip this specific assertion
+        expect(true).toBe(true);
+        return;
       }
-      // If gh is available, the test passes anyway
+
+      // Test the unavailable case
+      const result = scanGitHubState({ cwd: testDir });
+      expect(result.available).toBe(false);
+      expect(result.error).toBeDefined();
+      expect(result.issues).toEqual([]);
+      expect(result.prs).toEqual([]);
     });
 
     test('returns expected structure regardless of gh availability', () => {
