@@ -1,12 +1,16 @@
 {
   "name": "awesome-slash",
-  "version": "2.5.1",
+  "version": "2.6.0",
   "description": "Professional-grade slash commands for Claude Code that work across any project",
   "main": "lib/platform/detect-platform.js",
   "type": "commonjs",
+  "bin": {
+    "awesome-slash": "./bin/cli.js"
+  },
   "files": [
     ".claude-plugin/",
     ".mcp.json",
+    "bin/",
     "lib/",
     "mcp-server/index.js",
     "mcp-server/package.json",

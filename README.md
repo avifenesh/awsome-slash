@@ -6,7 +6,7 @@ A cross-platform plugin providing powerful, zero-configuration slash commands fo
 
 [![npm](https://img.shields.io/npm/v/awesome-slash?color=red)](https://www.npmjs.com/package/awesome-slash)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-2.5.1-blue)](https://github.com/avifenesh/awesome-slash/releases)
+[![Version](https://img.shields.io/badge/version-2.6.0-blue)](https://github.com/avifenesh/awesome-slash/releases)
 [![GitHub stars](https://img.shields.io/github/stars/avifenesh/awesome-slash?style=flat&color=yellow)](https://github.com/avifenesh/awesome-slash/stargazers)
 [![Claude Code](https://img.shields.io/badge/Claude-Code%20Plugin-blue)](https://docs.anthropic.com/en/docs/claude-code)
 [![Codex CLI](https://img.shields.io/badge/Codex-CLI%20Compatible-green)](https://developers.openai.com/codex/cli)
@@ -16,6 +16,13 @@ A cross-platform plugin providing powerful, zero-configuration slash commands fo
 
 > **💡 Model Recommendation**: Using **Opus** as the main agent model produces significantly better results and follows workflow phases more tightly. While Sonnet works for simpler tasks, Opus is recommended for complex multi-step workflows.
 
+## What's New in v2.6.0
+
+- **CLI Installer** - `npm install -g awesome-slash@latest && awesome-slash` for cross-platform setup
+- **Reality Check Refactor** - Replaced 4 LLM agents with JS collectors (~77% token reduction)
+- **Automated Releases** - GitHub Actions workflow with npm provenance
+- **Breaking** - `.claude/reality-check.local.md` settings file no longer used
+
 ## What's New in v2.5.1
 
 - **Platform-Aware State Directories** - State now stored in `.opencode/` for OpenCode, `.codex/` for Codex
@@ -23,37 +30,33 @@ A cross-platform plugin providing powerful, zero-configuration slash commands fo
 - **MCP Server Bug Fixes** - Fixed workflow state references and resume logic
 - **Documentation Updates** - Added note that Codex uses `$` prefix instead of `/`
 
-## What's New in v2.5.0
-
-- **Multi-Source Task Discovery** - Support for GitHub, GitLab, local files, custom CLI tools
-- **Source Preference Caching** - Your last-used source appears first on subsequent runs
-- **Security Hardening** - Fixed command injection and path traversal vulnerabilities
-
-## What's New in v2.4.7
-
-- **Simplified State Management** - Rewrote workflow-state.js, removed 9,000+ lines of overengineered code
-- **Removed Config System** - Deleted unused schemas and config system
-- **Tasks Lifecycle Wiring** - tasks.json now auto-registers/clears with workflow lifecycle
-- **Project Philosophy** - Added development guidelines to CLAUDE.md
-- **Agent Model Updates** - task-discoverer and code-explorer upgraded to opus
-
 ---
 
 ## Quick Install
 
+### Claude Code (Recommended)
+
 ```bash
-# npm (recommended)
-npm install awesome-slash
-
-# Claude Code
-claude plugin add npm:awesome-slash
-
-# OpenCode / Codex CLI
-git clone https://github.com/avifenesh/awesome-slash.git
-./scripts/install/opencode.sh  # or codex.sh
+/plugin marketplace add avifenesh/awesome-slash
+/plugin install next-task@awesome-slash
+/plugin install ship@awesome-slash
 ```
 
-**See [docs/INSTALLATION.md](./docs/INSTALLATION.md) for all options, prerequisites, and troubleshooting.**
+### All Platforms (npm)
+
+```bash
+npm install -g awesome-slash@latest
+awesome-slash
+```
+
+Interactive installer for Claude Code, OpenCode, and Codex CLI. Select one or more platforms.
+
+```
+Update:  npm update -g awesome-slash
+Remove:  npm uninstall -g awesome-slash
+```
+
+**See [docs/INSTALLATION.md](./docs/INSTALLATION.md) for all options.**
 
 ---
 

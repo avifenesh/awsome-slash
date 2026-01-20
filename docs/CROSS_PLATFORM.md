@@ -23,20 +23,37 @@ All three platforms share:
 
 ## Claude Code (Native)
 
-Use the plugins directly:
+### Option 1: Marketplace (Recommended)
 
 ```bash
-# Clone the repository
-git clone https://github.com/avifenesh/awesome-slash.git
+# Add the marketplace
+/plugin marketplace add avifenesh/awesome-slash
 
-# Install in Claude Code
-claude --add-plugin /path/to/awesome-slash/plugins/next-task
-claude --add-plugin /path/to/awesome-slash/plugins/ship
+# Install plugins
+/plugin install next-task@awesome-slash
+/plugin install ship@awesome-slash
+```
+
+### Option 2: Local Clone
+
+```bash
+git clone https://github.com/avifenesh/awesome-slash.git
+cd awesome-slash
+./scripts/install/claude.sh
+```
+
+### Option 3: Plugin Directory (Development)
+
+```bash
+claude --plugin-dir /path/to/awesome-slash/plugins/next-task
 ```
 
 ### Available Commands
 - `/next-task` - Master workflow orchestrator
 - `/ship` - Complete PR workflow
+- `/deslop-around` - AI slop cleanup
+- `/project-review` - Multi-agent code review
+- `/reality-check:scan` - Plan drift detection
 
 ### Available Agents (14 Total)
 

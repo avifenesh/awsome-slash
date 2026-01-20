@@ -1,0 +1,232 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 2.6.0) - leave empty to use existing tag'
+        required: false
+        type: string
+      dry_run:
+        description: 'Dry run (skip actual publish)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  validate:
+    name: Validate Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            # Tag push - extract version from tag
+            TAG="${GITHUB_REF#refs/tags/}"
+            VERSION="${TAG#v}"
+          elif [ -n "${{ inputs.version }}" ]; then
+            # Manual dispatch with version input
+            VERSION="${{ inputs.version }}"
+            TAG="v${VERSION}"
+          else
+            # Manual dispatch without version - use package.json
+            VERSION=$(node -p "require('./package.json').version")
+            TAG="v${VERSION}"
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "📦 Release version: ${VERSION} (tag: ${TAG})"
+
+      - name: Validate version format
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "❌ Invalid version format: $VERSION"
+            echo "Expected: X.Y.Z or X.Y.Z-prerelease"
+            exit 1
+          fi
+          echo "✅ Version format valid: $VERSION"
+
+      - name: Verify version consistency
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          echo "Checking version consistency across all files..."
+
+          # Check package.json
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$PKG_VERSION" != "$VERSION" ]; then
+            echo "❌ package.json version ($PKG_VERSION) doesn't match release version ($VERSION)"
+            exit 1
+          fi
+
+          # Check MCP server
+          MCP_VERSION=$(grep "version:" mcp-server/index.js | head -1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+")
+          if [ "$MCP_VERSION" != "$VERSION" ]; then
+            echo "❌ mcp-server/index.js version ($MCP_VERSION) doesn't match release version ($VERSION)"
+            exit 1
+          fi
+
+          # Check plugin.json files
+          for plugin_json in .claude-plugin/plugin.json plugins/*/.claude-plugin/plugin.json; do
+            if [ -f "$plugin_json" ]; then
+              PLUGIN_VERSION=$(node -p "require('./$plugin_json').version")
+              if [ "$PLUGIN_VERSION" != "$VERSION" ]; then
+                echo "❌ $plugin_json version ($PLUGIN_VERSION) doesn't match release version ($VERSION)"
+                exit 1
+              fi
+            fi
+          done
+
+          echo "✅ All version numbers match: $VERSION"
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Install MCP server dependencies
+        run: cd mcp-server && npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Validate plugin structure
+        run: node scripts/validate-plugins.js
+
+      - name: MCP smoke test
+        run: node scripts/mcp-smoke-test.js
+
+  publish-npm:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    needs: [validate, test]
+    environment: npm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: npm ci
+
+      - name: Publish to npm
+        if: ${{ !inputs.dry_run }}
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Dry run publish
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo "🏃 Dry run - skipping actual publish"
+          npm publish --dry-run
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [validate, publish-npm]
+    if: ${{ !inputs.dry_run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create tag if needed
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          TAG="${{ needs.validate.outputs.tag }}"
+          if ! git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Creating tag: $TAG"
+            git tag "$TAG"
+            git push origin "$TAG"
+          else
+            echo "Tag $TAG already exists"
+          fi
+
+      - name: Extract changelog for version
+        id: changelog
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+
+          # Extract changelog section for this version
+          CHANGELOG=$(awk "/^## \\[${VERSION}\\]/{flag=1; next} /^## \\[/{flag=0} flag" CHANGELOG.md)
+
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details."
+          fi
+
+          # Write to file to preserve formatting
+          echo "$CHANGELOG" > release_notes.md
+          echo "Generated release notes:"
+          cat release_notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.validate.outputs.tag }}
+          name: ${{ needs.validate.outputs.tag }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: ${{ contains(needs.validate.outputs.version, '-') }}
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notify:
+    name: Release Summary
+    runs-on: ubuntu-latest
+    needs: [validate, publish-npm, create-release]
+    if: always()
+    steps:
+      - name: Summary
+        run: |
+          echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.validate.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag:** ${{ needs.validate.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.publish-npm.result }}" = "success" ]; then
+            echo "✅ **npm:** Published successfully" >> $GITHUB_STEP_SUMMARY
+            echo "   - https://www.npmjs.com/package/awesome-slash" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **npm:** ${{ needs.publish-npm.result }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.create-release.result }}" = "success" ]; then
+            echo "✅ **GitHub Release:** Created successfully" >> $GITHUB_STEP_SUMMARY
+            echo "   - https://github.com/${{ github.repository }}/releases/tag/${{ needs.validate.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.create-release.result }}" = "skipped" ]; then
+            echo "⏭️ **GitHub Release:** Skipped (dry run)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **GitHub Release:** ${{ needs.create-release.result }}" >> $GITHUB_STEP_SUMMARY
+          fi

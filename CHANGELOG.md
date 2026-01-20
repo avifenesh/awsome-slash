@@ -7,13 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-01-20
+
+### Added
+- **CLI Installer** - `npm install -g awesome-slash@latest && awesome-slash`
+  - Multi-select: choose one or more platforms (Claude Code, OpenCode, Codex)
+  - Configures MCP servers and plugins automatically
+  - Update: `npm update -g awesome-slash`
+  - Remove: `npm uninstall -g awesome-slash`
+- **Automated Release Workflow** - GitHub Actions workflow for npm publish with provenance
+
 ### Changed
-- **Reality Check Architectural Refactor** - Replaced 4 LLM agents with JS collectors + single Opus call (#94)
+- **Reality Check Architectural Refactor** - Replaced 4 LLM agents with JS collectors + single Opus call (#97)
   - New `lib/reality-check/collectors.js` handles all data collection with pure JavaScript
   - Deleted `issue-scanner.md`, `doc-analyzer.md`, `code-explorer.md` agents
   - Deleted `reality-check-state.js` (510 lines of unnecessary state management)
   - Enhanced `plan-synthesizer.md` to receive raw data and perform deep semantic analysis
-  - Reduced token consumption by ~77%
+  - ~77% token reduction for reality-check scans
   - Command flags replace interactive settings: `--sources`, `--depth`, `--output`, `--file`
 
 ### Breaking Changes

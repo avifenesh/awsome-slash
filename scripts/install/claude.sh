@@ -17,34 +17,37 @@ if ! command -v claude &> /dev/null; then
   exit 1
 fi
 
-# Install each plugin
-echo ""
-echo "Installing plugins..."
-
-for plugin in next-task ship deslop-around project-review; do
-  PLUGIN_PATH="$PLUGIN_ROOT/plugins/$plugin"
-  if [ -d "$PLUGIN_PATH" ]; then
-    echo "  Installing $plugin..."
-    claude plugin add "$PLUGIN_PATH" 2>/dev/null || echo "    (already installed or error)"
-  fi
-done
-
-# Install lib dependencies
+# Install dependencies first
 echo ""
 echo "Installing dependencies..."
 cd "$PLUGIN_ROOT"
 npm install --production
 
+# Add as local marketplace
+echo ""
+echo "Adding local marketplace..."
+claude plugin marketplace add "$PLUGIN_ROOT" 2>/dev/null || true
+
+# Install each plugin
+echo ""
+echo "Installing plugins..."
+
+for plugin in next-task ship deslop-around project-review reality-check; do
+  echo "  Installing $plugin..."
+  claude plugin install "$plugin@awesome-slash" 2>/dev/null || echo "    (already installed or use /plugin install)"
+done
+
 echo ""
 echo "✓ Installation complete!"
 echo ""
 echo "Available commands:"
-echo "  /next-task          - Master workflow orchestrator"
-echo "  /next-task --status - Check workflow state"
-echo "  /next-task --resume - Resume from checkpoint"
-echo "  /ship               - Complete PR workflow"
-echo "  /deslop-around      - AI slop cleanup"
-echo "  /project-review     - Multi-agent code review"
+echo "  /next-task            - Master workflow orchestrator"
+echo "  /ship                 - Complete PR workflow"
+echo "  /deslop-around        - AI slop cleanup"
+echo "  /project-review       - Multi-agent code review"
+echo "  /reality-check:scan   - Plan drift detection"
 echo ""
-echo "To verify installation:"
-echo "  claude plugin list"
+echo "To verify: /plugin list"
+echo ""
+echo "Alternative: Start Claude with plugin directory:"
+echo "  claude --plugin-dir $PLUGIN_ROOT/plugins/next-task"

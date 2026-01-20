@@ -4,248 +4,236 @@ Complete installation instructions for awesome-slash across all supported platfo
 
 ---
 
-## Quick Install (30 seconds)
+## Claude Code (Recommended)
 
-### npm (Recommended)
+Add the marketplace and install plugins directly in Claude Code:
 
 ```bash
-npm install awesome-slash
+/plugin marketplace add avifenesh/awesome-slash
+/plugin install next-task@awesome-slash
+/plugin install ship@awesome-slash
+/plugin install deslop-around@awesome-slash
+/plugin install project-review@awesome-slash
+/plugin install reality-check@awesome-slash
 ```
+
+**Scopes** (optional):
+```bash
+# User scope (default) - available in all projects
+/plugin install next-task@awesome-slash
+
+# Project scope - shared with team
+/plugin install next-task@awesome-slash --scope project
+```
+
+---
+
+## All Platforms (npm Global Install)
+
+Interactive installer for Claude Code, OpenCode, and Codex CLI:
+
+```bash
+npm install -g awesome-slash@latest
+awesome-slash
+```
+
+Select one or more platforms when prompted:
+```
+Which platforms do you want to install for?
+
+  1) Claude Code
+  2) OpenCode
+  3) Codex CLI
+
+Your selection: 1 2
+```
+
+**Commands:**
+```bash
+npm update -g awesome-slash       # Update
+npm uninstall -g awesome-slash    # Remove npm package
+awesome-slash --remove            # Clean up configs
+```
+
+---
+
+## Manual Installation
 
 ### Claude Code
 
+### Option 1: Marketplace (Recommended)
+
+Add the marketplace and install plugins:
+
 ```bash
-# Option 1: npm (recommended)
-claude plugin add npm:awesome-slash
+# Add the marketplace
+/plugin marketplace add avifenesh/awesome-slash
 
-# Option 2: GitHub marketplace
-claude plugin marketplace add avifenesh/awesome-slash
-claude plugin install awesome-slash@awesome-slash
+# Install all plugins
+/plugin install next-task@awesome-slash
+/plugin install ship@awesome-slash
+/plugin install deslop-around@awesome-slash
+/plugin install project-review@awesome-slash
+/plugin install reality-check@awesome-slash
+```
 
-# Option 3: Local clone
+**Scopes** (optional):
+```bash
+# User scope (default) - available in all projects
+/plugin install next-task@awesome-slash
+
+# Project scope - shared with team (in .claude/settings.json)
+/plugin install next-task@awesome-slash --scope project
+
+# Local scope - just for you in this project (gitignored)
+/plugin install next-task@awesome-slash --scope local
+```
+
+### Option 2: Local Clone
+
+Clone the repository and run the install script:
+
+```bash
 git clone https://github.com/avifenesh/awesome-slash.git
+cd awesome-slash
 ./scripts/install/claude.sh
 ```
 
-### OpenCode
+### Option 3: Plugin Directory Flag
+
+For development or testing:
 
 ```bash
-npm install awesome-slash
-# or
+git clone https://github.com/avifenesh/awesome-slash.git
+claude --plugin-dir ./awesome-slash/plugins/next-task
+```
+
+---
+
+## OpenCode
+
+```bash
 git clone https://github.com/avifenesh/awesome-slash.git
 cd awesome-slash
 ./scripts/install/opencode.sh
 ```
 
-### Codex CLI
+This configures:
+- MCP server in `~/.config/opencode/opencode.json`
+- Slash commands in `~/.config/opencode/commands/`
+
+---
+
+## Codex CLI
+
+> **Note:** Codex uses `$` prefix for skills (e.g., `$next-task` instead of `/next-task`).
 
 ```bash
-npm install awesome-slash
-# or
 git clone https://github.com/avifenesh/awesome-slash.git
 cd awesome-slash
 ./scripts/install/codex.sh
 ```
 
+This configures:
+- MCP server in `~/.codex/config.toml`
+- Skills in `~/.codex/skills/`
+
 ---
 
 ## Verify Installation
 
-In Claude Code, type:
+### Claude Code
 
-```
+```bash
 /help
 ```
 
-You should see commands listed:
-- `/deslop-around` - Cleanup AI slop
+You should see commands:
 - `/next-task` - Master workflow orchestrator
-- `/project-review` - Multi-agent code review
 - `/ship` - Complete PR workflow
+- `/deslop-around` - AI slop cleanup
+- `/project-review` - Multi-agent code review
+- `/reality-check:scan` - Plan drift detection
 
-### Test Platform Detection
+### OpenCode / Codex
 
-In any project directory:
-
-```
-Can you detect what type of project this is?
-```
-
-Claude will run platform detection and report your project configuration.
+Type the command name and it should be recognized:
+- `/next-task` (OpenCode) or `$next-task` (Codex)
 
 ---
 
 ## Prerequisites
 
-### Required for All Commands
+### Required
 
 - **Git** - Version control
   ```bash
-  git --version  # Should show version
+  git --version
   ```
 
-### Required for `/ship`
+- **Node.js 18+** - For library functions
+  ```bash
+  node --version
+  ```
 
-- **GitHub CLI (gh)** - For PR operations
+### Required for GitHub Workflows
+
+- **GitHub CLI (`gh`)** - For PR operations and issue discovery
   ```bash
   # Install
-  # macOS:
-  brew install gh
-  
-  # Windows:
-  winget install GitHub.cli
-  
-  # Linux:
-  # See https://cli.github.com/manual/installation
-  
-  # Authenticate:
+  brew install gh        # macOS
+  winget install GitHub.cli  # Windows
+
+  # Authenticate
   gh auth login
-  
-  # Verify:
+
+  # Verify
   gh auth status
   ```
 
-### Optional Tools (Auto-Detected)
+### Optional (Auto-Detected)
 
-These are detected automatically if present:
-- **Node.js** - For Node.js projects
-- **Python** - For Python projects
-- **Rust/Cargo** - For Rust projects
-- **Go** - For Go projects
-- **Railway CLI** - For Railway deployments
-- **Vercel CLI** - For Vercel deployments
-- **Netlify CLI** - For Netlify deployments
-
-### Check Your Tools
-
-```bash
-node ~/.claude/plugins/awesome-slash/lib/platform/verify-tools.js
-```
+These tools are detected automatically if present:
+- Railway CLI, Vercel CLI, Netlify CLI (for deployments)
+- GitLab CLI (`glab`) for GitLab workflows
 
 ---
 
-## Advanced Installation Options
+## Managing Plugins
 
-### Manual Installation (Advanced)
-
-If you prefer manual control:
+### Update Marketplace
 
 ```bash
-# Clone to your preferred location
-git clone https://github.com/avifenesh/awesome-slash.git ~/awesome-slash
-
-# Create Claude plugins directory
-mkdir -p ~/.claude/plugins
-
-# Create symlink
-ln -s ~/awesome-slash ~/.claude/plugins/awesome-slash
+/plugin marketplace update awesome-slash
 ```
 
-Optional: Add to `~/.bashrc` or `~/.zshrc`:
+### Update Plugins
 
 ```bash
-export CLAUDE_PLUGIN_ROOT="$HOME/.claude/plugins/awesome-slash"
+/plugin update next-task@awesome-slash
 ```
 
-### Install from Claude Marketplace (Coming Soon)
-
-Once published to the Claude marketplace:
+### Disable/Enable
 
 ```bash
-claude plugin install awesome-slash
+/plugin disable next-task@awesome-slash
+/plugin enable next-task@awesome-slash
 ```
 
----
-
-## Configuration
-
-### Zero Configuration! 🎉
-
-This plugin auto-detects everything:
-- ✅ Project type (Node.js, Python, Rust, Go)
-- ✅ CI platform (GitHub Actions, GitLab CI, CircleCI, Jenkins)
-- ✅ Deployment platform (Railway, Vercel, Netlify, Fly.io)
-- ✅ Branch strategy (single-branch or multi-branch)
-- ✅ Available tools
-
-Everything "just works" based on your project structure!
-
-### Optional: Custom Settings
-
-Create `.awesomeslashrc.json` in your home directory or project root:
-
-```json
-{
-  "logging": {
-    "level": "debug"
-  },
-  "tasks": {
-    "defaultSource": "gh-issues",
-    "defaultStoppingPoint": "merged"
-  },
-  "deslop-around": {
-    "defaultMode": "report",
-    "maxChanges": 5
-  },
-  "next-task": {
-    "defaultFilter": null,
-    "includeBlocked": false
-  },
-  "ship": {
-    "defaultStrategy": "squash",
-    "skipTests": false
-  },
-  "performance": {
-    "cacheSize": 100,
-    "cacheTTL": 200
-  }
-}
-```
-
----
-
-## Updating
-
-### From npm
+### Uninstall
 
 ```bash
-npm update awesome-slash
+/plugin uninstall next-task@awesome-slash
+
+# Or remove marketplace entirely
+/plugin marketplace remove awesome-slash
 ```
 
-### From Marketplace
+### Local Installation Update
 
 ```bash
-claude plugin update awesome-slash
-```
-
-### Local Installation
-
-```bash
-cd ~/.claude/plugins/awesome-slash
+cd path/to/awesome-slash
 git pull origin main
-```
-
----
-
-## Uninstalling
-
-### From npm
-
-```bash
-npm uninstall awesome-slash
-```
-
-### From Marketplace
-
-```bash
-claude plugin uninstall awesome-slash
-```
-
-### Local Installation
-
-```bash
-rm -rf ~/.claude/plugins/awesome-slash
-# Remove CLAUDE_PLUGIN_ROOT from shell config if set
 ```
 
 ---
@@ -254,146 +242,72 @@ rm -rf ~/.claude/plugins/awesome-slash
 
 ### Commands Don't Appear
 
-**Problem**: Commands don't show in `/help`
-
-**Solutions**:
-1. Check installation:
+1. **Check marketplace is added:**
    ```bash
-   ls -la ~/.claude/plugins/awesome-slash
+   /plugin marketplace list
    ```
 
-2. Verify environment:
+2. **Check plugin is installed:**
    ```bash
-   echo $CLAUDE_PLUGIN_ROOT
+   /plugin list
    ```
 
-3. Restart Claude Code completely
+3. **Restart Claude Code** after installation
 
-4. Check logs:
-   ```bash
-   cat ~/.claude/logs/latest.log
-   ```
+### "Marketplace not found"
 
-### "Module not found" Errors
+The repository must be public or you need authentication:
 
-**Solution**:
 ```bash
-export CLAUDE_PLUGIN_ROOT="$HOME/.claude/plugins/awesome-slash"
-ls -la $CLAUDE_PLUGIN_ROOT/lib/
+# For private repos, ensure gh is authenticated
+gh auth status
+```
+
+### Plugin Install Fails
+
+Try adding the full GitHub URL:
+```bash
+/plugin marketplace add https://github.com/avifenesh/awesome-slash.git
 ```
 
 ### "GitHub CLI not found"
 
-**Solution**:
+Required for `/ship` and GitHub-based workflows:
 ```bash
 brew install gh  # macOS
 winget install GitHub.cli  # Windows
 
 gh auth login
-gh auth status
 ```
-
-### "Plugin not found"
-
-**Solution**: Use full GitHub URL:
-```bash
-claude plugin install https://github.com/avifenesh/awesome-slash
-```
-
-### Platform Detection Issues
-
-**Problem**: Project type not detected correctly
-
-**Solution**:
-```bash
-node $CLAUDE_PLUGIN_ROOT/lib/platform/detect-platform.js
-```
-
-Check for marker files:
-- `package.json` for Node.js
-- `requirements.txt` or `pyproject.toml` for Python
-- `Cargo.toml` for Rust
-- `go.mod` for Go
-
-### Command Performance
-
-Some commands are longer-running due to external operations:
-- `/ship`: Includes CI wait time and deployment validation
-- `/project-review`: Performs thorough multi-agent analysis
-- `/next-task`: Full autonomous workflow with multiple quality gates
-- `/deslop-around`: Fast codebase scanning
-
-Performance depends on repository size, CI/deployment latency, and network conditions.
 
 ---
 
-## Quick Test (5 Minutes)
+## Platform-Specific Notes
 
-### 1. Test Infrastructure
+### Claude Code
+- Plugins installed via marketplace are cached locally
+- Use `--scope project` to share plugins with your team
+- State stored in `.claude/`
 
-```bash
-git clone https://github.com/avifenesh/awesome-slash.git
-cd awesome-slash
-node lib/platform/detect-platform.js
-```
+### OpenCode
+- MCP server provides workflow tools
+- Slash commands defined in `~/.config/opencode/commands/`
+- State stored in `.opencode/`
 
-Expected output:
-```json
-{
-  "projectType": "nodejs",
-  "branchStrategy": "single-branch",
-  "mainBranch": "main"
-}
-```
-
-### 2. Test Pattern Libraries
-
-```bash
-node -e "
-const slop = require('./lib/patterns/slop-patterns.js');
-const review = require('./lib/patterns/review-patterns.js');
-console.log('✓ Slop patterns:', Object.keys(slop.slopPatterns).length);
-console.log('✓ Review frameworks:', review.getAvailableFrameworks().length);
-"
-```
-
-Expected:
-```
-✓ Slop patterns: 18
-✓ Review frameworks: 8
-```
-
-### 3. Test Your First Command
-
-```bash
-cd your-project/
-claude
-> /deslop-around report
-```
+### Codex CLI
+- Uses `$` prefix instead of `/` for commands
+- Skills defined in `~/.codex/skills/`
+- State stored in `.codex/`
 
 ---
 
 ## Getting Help
 
-- **GitHub Issues**: https://github.com/avifenesh/awesome-slash/issues
-- **Discussions**: https://github.com/avifenesh/awesome-slash/discussions
+- **Issues:** https://github.com/avifenesh/awesome-slash/issues
+- **Discussions:** https://github.com/avifenesh/awesome-slash/discussions
 
 ```bash
 gh issue create --repo avifenesh/awesome-slash \
-  --title "Bug: [description]" \
-  --body "Detailed description with steps to reproduce"
+  --title "Installation: [description]" \
+  --body "Environment: [Claude Code/OpenCode/Codex], OS: [...]"
 ```
-
----
-
-## Success Checklist
-
-After installation:
-
-- [ ] See commands in `/help`
-- [ ] Run `/deslop-around report` successfully
-- [ ] Platform detection works
-- [ ] Project type detected correctly
-- [ ] GitHub CLI works (for `/ship`)
-
-**You're ready to use awesome-slash!** 🚀
