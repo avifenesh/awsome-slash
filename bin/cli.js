@@ -253,22 +253,31 @@ enabled = true
 
   fs.writeFileSync(configPath, configContent);
 
-  // Sync skill files
+  // Sync skill files (add name field required by Codex)
   const skillMappings = [
-    ['next-task', 'next-task', 'next-task.md'],
-    ['ship', 'ship', 'ship.md'],
-    ['deslop', 'deslop-around', 'deslop-around.md'],
-    ['review', 'project-review', 'project-review.md'],
-    ['reality-check', 'reality-check', 'scan.md']
+    ['next-task', 'next-task', 'next-task.md', 'Next Task'],
+    ['ship', 'ship', 'ship.md', 'Ship'],
+    ['deslop', 'deslop-around', 'deslop-around.md', 'Deslop Around'],
+    ['review', 'project-review', 'project-review.md', 'Project Review'],
+    ['reality-check', 'reality-check', 'scan.md', 'Reality Check']
   ];
 
-  for (const [skillName, plugin, source] of skillMappings) {
+  for (const [skillName, plugin, source, displayName] of skillMappings) {
     const srcPath = path.join(installDir, 'plugins', plugin, 'commands', source);
     const skillDir = path.join(skillsDir, skillName);
     const destPath = path.join(skillDir, 'SKILL.md');
     if (fs.existsSync(srcPath)) {
       fs.mkdirSync(skillDir, { recursive: true });
-      fs.copyFileSync(srcPath, destPath);
+      // Read source and add name field to frontmatter for Codex compatibility
+      let content = fs.readFileSync(srcPath, 'utf8');
+      if (content.startsWith('---')) {
+        // Insert name field after opening ---
+        content = content.replace(/^---\n/, `---\nname: ${displayName}\n`);
+      } else {
+        // Add frontmatter if missing
+        content = `---\nname: ${displayName}\n---\n\n${content}`;
+      }
+      fs.writeFileSync(destPath, content);
     }
   }
 
