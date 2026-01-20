@@ -10,7 +10,7 @@ echo
 # Configuration
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CODEX_CONFIG_DIR="${HOME}/.codex"
-CODEX_PROMPTS_DIR="${CODEX_CONFIG_DIR}/prompts"
+CODEX_SKILLS_DIR="${CODEX_CONFIG_DIR}/skills"
 CODEX_LIB_DIR="${CODEX_CONFIG_DIR}/awesome-slash/lib"
 
 # Detect OS and normalize paths
@@ -20,7 +20,7 @@ if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
   CODEX_CONFIG_DIR="${USERPROFILE}/.codex"
   # Replace backslashes with forward slashes
   CODEX_CONFIG_DIR="${CODEX_CONFIG_DIR//\\//}"
-  CODEX_PROMPTS_DIR="${CODEX_CONFIG_DIR}/prompts"
+  CODEX_SKILLS_DIR="${CODEX_CONFIG_DIR}/skills"
   CODEX_LIB_DIR="${CODEX_CONFIG_DIR}/awesome-slash/lib"
 else
   IS_WINDOWS=false
@@ -28,7 +28,7 @@ fi
 
 echo "📂 Configuration:"
 echo "  Repository: $REPO_ROOT"
-echo "  Prompts to: $CODEX_PROMPTS_DIR"
+echo "  Skills to: $CODEX_SKILLS_DIR"
 echo "  Libraries to: $CODEX_LIB_DIR"
 echo
 
@@ -64,9 +64,9 @@ echo
 
 # Create directories
 echo "📁 Creating directories..."
-mkdir -p "$CODEX_PROMPTS_DIR"
+mkdir -p "$CODEX_SKILLS_DIR"
 mkdir -p "$CODEX_LIB_DIR"/{platform,patterns,utils}
-echo "  ✓ Created $CODEX_PROMPTS_DIR"
+echo "  ✓ Created $CODEX_SKILLS_DIR"
 echo "  ✓ Created $CODEX_LIB_DIR"
 echo
 
@@ -81,43 +81,64 @@ echo "  ✓ Copied pattern libraries"
 echo "  ✓ Copied utility functions"
 echo
 
-# Install commands with path adjustments
-echo "⚙️  Installing commands..."
+# Install skills with proper SKILL.md format
+echo "⚙️  Installing skills..."
 
-# Command mappings: target_name:plugin:source_file
-# Format allows commands from different plugins
-COMMAND_MAPPINGS=(
-  "deslop-around:deslop-around:deslop-around"
-  "next-task:next-task:next-task"
-  "delivery-approval:next-task:delivery-approval"
-  "update-docs-around:next-task:update-docs-around"
-  "project-review:project-review:project-review"
-  "ship:ship:ship"
-  "reality-check-scan:reality-check:scan"
+# Skill mappings: skill_name:plugin:source_file:description
+# Codex skills require SKILL.md with name and description in YAML frontmatter
+SKILL_MAPPINGS=(
+  "next-task:next-task:next-task:Master workflow orchestrator with autonomous task-to-production automation"
+  "ship:ship:ship:Complete PR workflow from commit to production with validation"
+  "deslop-around:deslop-around:deslop-around:AI slop cleanup with minimal diffs and behavior preservation"
+  "project-review:project-review:project-review:Multi-agent iterative code review until zero issues remain"
+  "reality-check-scan:reality-check:scan:Deep repository analysis to detect plan drift and code reality gaps"
+  "delivery-approval:next-task:delivery-approval:Validate task completion and approve for shipping"
+  "update-docs-around:next-task:update-docs-around:Sync documentation with actual code state"
 )
 
-for mapping in "${COMMAND_MAPPINGS[@]}"; do
-  IFS=':' read -r TARGET_NAME PLUGIN SOURCE_NAME <<< "$mapping"
+for mapping in "${SKILL_MAPPINGS[@]}"; do
+  IFS=':' read -r SKILL_NAME PLUGIN SOURCE_NAME DESCRIPTION <<< "$mapping"
   SOURCE_FILE="$REPO_ROOT/plugins/$PLUGIN/commands/$SOURCE_NAME.md"
-  TARGET_FILE="$CODEX_PROMPTS_DIR/$TARGET_NAME.md"
+  SKILL_DIR="$CODEX_SKILLS_DIR/$SKILL_NAME"
+  TARGET_FILE="$SKILL_DIR/SKILL.md"
 
   if [ -f "$SOURCE_FILE" ]; then
-    # Copy command file to prompts directory
-    cp "$SOURCE_FILE" "$TARGET_FILE"
-    echo "  ✓ Installed /prompts:$TARGET_NAME"
+    # Create skill directory
+    mkdir -p "$SKILL_DIR"
+
+    # Create SKILL.md with proper frontmatter
+    # Remove existing frontmatter and add Codex-compatible format
+    {
+      echo "---"
+      echo "name: $SKILL_NAME"
+      echo "description: $DESCRIPTION"
+      echo "---"
+      echo ""
+      # Skip original frontmatter if present and include rest of content
+      sed '1{/^---$/!b};1,/^---$/d' "$SOURCE_FILE"
+    } > "$TARGET_FILE"
+
+    echo "  ✓ Installed skill: \$${SKILL_NAME}"
   else
-    echo "  ⚠️  Skipped /$TARGET_NAME (source not found: $SOURCE_FILE)"
+    echo "  ⚠️  Skipped \$${SKILL_NAME} (source not found: $SOURCE_FILE)"
   fi
 done
 
-# Remove old/legacy commands that no longer exist
-OLD_COMMANDS=("pr-merge")
-for old_cmd in "${OLD_COMMANDS[@]}"; do
-  if [ -f "$CODEX_PROMPTS_DIR/$old_cmd.md" ]; then
-    rm "$CODEX_PROMPTS_DIR/$old_cmd.md"
-    echo "  🗑️  Removed legacy /prompts:$old_cmd"
+# Remove old/deprecated skills and prompts
+OLD_SKILLS=("deslop" "review" "reality-check-set" "pr-merge")
+for old_skill in "${OLD_SKILLS[@]}"; do
+  if [ -d "$CODEX_SKILLS_DIR/$old_skill" ]; then
+    rm -rf "$CODEX_SKILLS_DIR/$old_skill"
+    echo "  🗑️  Removed deprecated skill: $old_skill"
   fi
 done
+
+# Clean up old prompts directory if it exists
+OLD_PROMPTS_DIR="$CODEX_CONFIG_DIR/prompts"
+if [ -d "$OLD_PROMPTS_DIR" ]; then
+  rm -rf "$OLD_PROMPTS_DIR"
+  echo "  🗑️  Removed old prompts directory"
+fi
 
 echo
 
@@ -155,28 +176,30 @@ echo
 cat > "$CODEX_CONFIG_DIR/AWESOME_SLASH_README.md" << 'EOF'
 # awesome-slash for Codex CLI
 
-Commands installed for OpenAI Codex CLI.
+Skills installed for OpenAI Codex CLI.
 
-## Available Commands
+## Available Skills
 
-Access via /prompts: menu:
-- `/prompts:deslop-around` - AI slop cleanup
-- `/prompts:next-task` - Task prioritization
-- `/prompts:project-review` - Code review
-- `/prompts:ship` - PR workflow
-- `/prompts:pr-merge` - PR merge
+Access via $ prefix:
+- `$next-task` - Master workflow orchestrator
+- `$ship` - PR workflow from commit to production
+- `$deslop-around` - AI slop cleanup
+- `$project-review` - Multi-agent code review
+- `$reality-check-scan` - Plan drift detection
+- `$delivery-approval` - Validate task completion
+- `$update-docs-around` - Sync documentation
 
 ## Usage
 
 In Codex CLI:
 ```bash
 codex
-> /prompts:deslop-around
-> /prompts:next-task bug
-> /prompts:ship --strategy rebase
+> $next-task
+> $ship
+> $deslop-around
 ```
 
-Or type `/prompts:` to see the menu.
+Or type `$` to see available skills.
 
 ## Libraries
 
@@ -201,20 +224,24 @@ echo
 # Success message
 echo "✅ Installation complete!"
 echo
-echo "📋 Installed Commands (access via /prompts: menu):"
-for cmd in "${COMMANDS[@]}"; do
-  echo "  • /prompts:$cmd"
-done
+echo "📋 Installed Skills (access via \$ prefix):"
+echo "  • \$next-task"
+echo "  • \$ship"
+echo "  • \$deslop-around"
+echo "  • \$project-review"
+echo "  • \$reality-check-scan"
+echo "  • \$delivery-approval"
+echo "  • \$update-docs-around"
 echo
 echo "📖 Next Steps:"
 echo "  1. Start Codex CLI: codex"
-echo "  2. Type: /prompts: (shows menu)"
-echo "  3. Select a command or type: /prompts:deslop-around"
+echo "  2. Type: \$ (shows available skills)"
+echo "  3. Select a skill or type: \$next-task"
 echo "  4. See help: cat $CODEX_CONFIG_DIR/AWESOME_SLASH_README.md"
 echo
-echo "💡 Pro Tip: Type /prompts: to see all available prompts"
+echo "💡 Pro Tip: Type \$ to see all available skills"
 echo
-echo "🔄 To update commands, re-run this installer:"
+echo "🔄 To update skills, re-run this installer:"
 echo "  ./adapters/codex/install.sh"
 echo
 echo "Happy coding! 🎉"

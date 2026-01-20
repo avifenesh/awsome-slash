@@ -246,10 +246,10 @@ function installForCodex(installDir) {
   const home = process.env.HOME || process.env.USERPROFILE;
   const configDir = path.join(home, '.codex');
   const configPath = path.join(configDir, 'config.toml');
-  const promptsDir = path.join(configDir, 'prompts');
+  const skillsDir = path.join(configDir, 'skills');
 
   fs.mkdirSync(configDir, { recursive: true });
-  fs.mkdirSync(promptsDir, { recursive: true });
+  fs.mkdirSync(skillsDir, { recursive: true });
 
   // Update MCP config
   const mcpPath = path.join(installDir, 'mcp-server', 'index.js').replace(/\\/g, '\\\\');
@@ -286,51 +286,76 @@ AI_STATE_DIR = ".codex"
 
   fs.writeFileSync(configPath, configContent);
 
-  // Remove old/deprecated prompts
-  const oldPrompts = ['reality-check-set.md', 'pr-merge.md'];
-  for (const oldPrompt of oldPrompts) {
-    const oldPath = path.join(promptsDir, oldPrompt);
-    if (fs.existsSync(oldPath)) {
-      fs.unlinkSync(oldPath);
-      console.log(`  Removed deprecated: ${oldPrompt}`);
-    }
-  }
-
-  // Also clean up old skills directory if it exists
-  const oldSkillsDir = path.join(configDir, 'skills');
-  if (fs.existsSync(oldSkillsDir)) {
-    const oldSkillDirs = ['next-task', 'ship', 'deslop', 'review', 'reality-check', 'reality-check-set', 'pr-merge'];
-    for (const dir of oldSkillDirs) {
-      const oldPath = path.join(oldSkillsDir, dir);
+  // Remove old/deprecated prompts directory if it exists
+  const oldPromptsDir = path.join(configDir, 'prompts');
+  if (fs.existsSync(oldPromptsDir)) {
+    const oldFiles = ['next-task.md', 'ship.md', 'deslop-around.md', 'project-review.md',
+                      'reality-check-scan.md', 'delivery-approval.md', 'update-docs-around.md',
+                      'reality-check-set.md', 'pr-merge.md'];
+    for (const file of oldFiles) {
+      const oldPath = path.join(oldPromptsDir, file);
       if (fs.existsSync(oldPath)) {
-        fs.rmSync(oldPath, { recursive: true, force: true });
+        fs.unlinkSync(oldPath);
+        console.log(`  Removed old prompt: ${file}`);
       }
     }
   }
 
-  // Sync prompt files (prompts system - simpler than skills)
-  const promptMappings = [
-    ['next-task.md', 'next-task', 'next-task.md'],
-    ['ship.md', 'ship', 'ship.md'],
-    ['deslop-around.md', 'deslop-around', 'deslop-around.md'],
-    ['project-review.md', 'project-review', 'project-review.md'],
-    ['reality-check-scan.md', 'reality-check', 'scan.md'],
-    ['delivery-approval.md', 'next-task', 'delivery-approval.md'],
-    ['update-docs-around.md', 'next-task', 'update-docs-around.md']
-  ];
-
-  for (const [target, plugin, source] of promptMappings) {
-    const srcPath = path.join(installDir, 'plugins', plugin, 'commands', source);
-    const destPath = path.join(promptsDir, target);
-    if (fs.existsSync(srcPath)) {
-      fs.copyFileSync(srcPath, destPath);
+  // Remove old/deprecated skills
+  const oldSkillDirs = ['deslop', 'review', 'reality-check-set', 'pr-merge'];
+  for (const dir of oldSkillDirs) {
+    const oldPath = path.join(skillsDir, dir);
+    if (fs.existsSync(oldPath)) {
+      fs.rmSync(oldPath, { recursive: true, force: true });
+      console.log(`  Removed deprecated skill: ${dir}`);
     }
   }
 
-  console.log('✅ Codex CLI installation complete!');
+  // Skill mappings: [skillName, plugin, sourceFile, description]
+  // Codex skills require SKILL.md with name and description in YAML frontmatter
+  const skillMappings = [
+    ['next-task', 'next-task', 'next-task.md', 'Master workflow orchestrator with autonomous task-to-production automation'],
+    ['ship', 'ship', 'ship.md', 'Complete PR workflow from commit to production with validation'],
+    ['deslop-around', 'deslop-around', 'deslop-around.md', 'AI slop cleanup with minimal diffs and behavior preservation'],
+    ['project-review', 'project-review', 'project-review.md', 'Multi-agent iterative code review until zero issues remain'],
+    ['reality-check-scan', 'reality-check', 'scan.md', 'Deep repository analysis to detect plan drift and code reality gaps'],
+    ['delivery-approval', 'next-task', 'delivery-approval.md', 'Validate task completion and approve for shipping'],
+    ['update-docs-around', 'next-task', 'update-docs-around.md', 'Sync documentation with actual code state']
+  ];
+
+  for (const [skillName, plugin, sourceFile, description] of skillMappings) {
+    const srcPath = path.join(installDir, 'plugins', plugin, 'commands', sourceFile);
+    const skillDir = path.join(skillsDir, skillName);
+    const destPath = path.join(skillDir, 'SKILL.md');
+
+    if (fs.existsSync(srcPath)) {
+      // Create skill directory
+      fs.mkdirSync(skillDir, { recursive: true });
+
+      // Read source file and transform to SKILL.md format
+      let content = fs.readFileSync(srcPath, 'utf8');
+
+      // Check if file has existing YAML frontmatter
+      if (content.startsWith('---')) {
+        // Replace existing frontmatter with Codex-compatible format
+        content = content.replace(
+          /^---\n[\s\S]*?\n---\n/,
+          `---\nname: ${skillName}\ndescription: ${description}\n---\n`
+        );
+      } else {
+        // Add new frontmatter
+        content = `---\nname: ${skillName}\ndescription: ${description}\n---\n\n${content}`;
+      }
+
+      fs.writeFileSync(destPath, content);
+      console.log(`  ✓ Installed skill: ${skillName}`);
+    }
+  }
+
+  console.log('\n✅ Codex CLI installation complete!');
   console.log(`   Config: ${configPath}`);
-  console.log(`   Prompts: ${promptsDir}`);
-  console.log('   Access via: /prompts:next-task, /prompts:ship, etc.');
+  console.log(`   Skills: ${skillsDir}`);
+  console.log('   Access via: $next-task, $ship, $deslop-around, etc.');
   console.log('   MCP tools: workflow_start, workflow_status, workflow_resume, task_discover, review_code\n');
   return true;
 }

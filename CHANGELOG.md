@@ -23,11 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **CLI Installer** - Multiple fixes for cross-platform installation
-  - Fixed OpenCode command path to match `adapters/opencode/install.sh`
-  - Fixed Codex to use `prompts/` instead of `skills/` system
+  - Fixed OpenCode command path to `~/.opencode/commands/awesome-slash/`
+  - Fixed Codex to use proper skills format with `SKILL.md` (name + description)
   - Fixed MCP server dependency installation
   - Cleans up deprecated files and old wrong locations on install/update
-  - Added all 7 commands: next-task, ship, deslop-around, project-review, reality-check-scan, delivery-approval, update-docs-around
+  - Added all 7 skills: next-task, ship, deslop-around, project-review, reality-check-scan, delivery-approval, update-docs-around
 
 ### Changed
 - **Reality Check Architectural Refactor** - Replaced 4 LLM agents with JS collectors + single Opus call (#97)

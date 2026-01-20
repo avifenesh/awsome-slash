@@ -1,6 +1,6 @@
 {
   "name": "deslop-around",
-  "version": "2.6.0",
+  "version": "2.6.1",
   "description": "AI slop cleanup with minimal diffs and behavior preservation",
   "author": {
     "name": "Avi Fenesh",
