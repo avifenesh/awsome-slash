@@ -13,8 +13,9 @@ const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
 
-const REPO_URL = 'https://github.com/avifenesh/awesome-slash.git';
 const VERSION = require('../package.json').version;
+// Use the installed npm package directory as source (no git clone needed)
+const PACKAGE_DIR = path.join(__dirname, '..');
 
 function getInstallDir() {
   const home = process.env.HOME || process.env.USERPROFILE;
@@ -87,9 +88,17 @@ function cleanOldInstallation(installDir) {
   }
 }
 
-function cloneRepo(installDir) {
-  console.log('Downloading awesome-slash...');
-  execSync(`git clone --depth 1 ${REPO_URL} "${installDir}"`, { stdio: 'inherit' });
+function copyFromPackage(installDir) {
+  console.log('Installing awesome-slash files...');
+  // Copy from npm package to ~/.awesome-slash
+  fs.cpSync(PACKAGE_DIR, installDir, {
+    recursive: true,
+    filter: (src) => {
+      // Skip node_modules and .git directories
+      const basename = path.basename(src);
+      return basename !== 'node_modules' && basename !== '.git';
+    }
+  });
 }
 
 function installDependencies(installDir) {
@@ -397,7 +406,7 @@ For Claude Code (recommended):
   // Download
   const installDir = getInstallDir();
   cleanOldInstallation(installDir);
-  cloneRepo(installDir);
+  copyFromPackage(installDir);
   installDependencies(installDir);
 
   // Install for each platform
