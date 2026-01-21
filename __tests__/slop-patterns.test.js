@@ -1396,4 +1396,355 @@ describe('slop-patterns', () => {
       expect(analyzers.countNonEmptyLines).toBeDefined();
     });
   });
+
+  // ============================================================================
+  // Generic Naming Detection Tests
+  // ============================================================================
+  describe('Generic Naming Detection', () => {
+    describe('pattern definitions', () => {
+      const genericPatterns = [
+        'generic_naming_js',
+        'generic_naming_py',
+        'generic_naming_rust',
+        'generic_naming_go'
+      ];
+
+      genericPatterns.forEach(name => {
+        it(`should have ${name} pattern defined`, () => {
+          expect(slopPatterns).toHaveProperty(name);
+          expect(slopPatterns[name].pattern).toBeInstanceOf(RegExp);
+        });
+      });
+
+      it('should have correct metadata for all generic naming patterns', () => {
+        genericPatterns.forEach(name => {
+          const pattern = slopPatterns[name];
+          expect(pattern.severity).toBe('low');
+          expect(pattern.autoFix).toBe('flag');
+          expect(pattern.description).toContain('Generic variable name');
+          expect(Array.isArray(pattern.exclude)).toBe(true);
+        });
+      });
+
+      it('should have language-specific patterns', () => {
+        expect(slopPatterns.generic_naming_js.language).toBe('javascript');
+        expect(slopPatterns.generic_naming_py.language).toBe('python');
+        expect(slopPatterns.generic_naming_rust.language).toBe('rust');
+        expect(slopPatterns.generic_naming_go.language).toBe('go');
+      });
+    });
+
+    describe('JavaScript/TypeScript detection', () => {
+      const pattern = () => slopPatterns.generic_naming_js.pattern;
+
+      describe('should match generic variable declarations', () => {
+        it('should match const with generic names', () => {
+          expect(pattern().test('const data = {}')).toBe(true);
+          expect(pattern().test('const result = []')).toBe(true);
+          expect(pattern().test('const item = null')).toBe(true);
+          expect(pattern().test('const temp = 0')).toBe(true);
+          expect(pattern().test('const value = "test"')).toBe(true);
+          expect(pattern().test('const output = process()')).toBe(true);
+        });
+
+        it('should match let with generic names', () => {
+          expect(pattern().test('let data = {}')).toBe(true);
+          expect(pattern().test('let result = []')).toBe(true);
+          expect(pattern().test('let response = await fetch()')).toBe(true);
+        });
+
+        it('should match var with generic names', () => {
+          expect(pattern().test('var data = {}')).toBe(true);
+          expect(pattern().test('var obj = {}')).toBe(true);
+        });
+
+        it('should match TypeScript type annotations', () => {
+          expect(pattern().test('const data: string = ""')).toBe(true);
+          expect(pattern().test('let result: number = 0')).toBe(true);
+          expect(pattern().test('const response: Response = await fetch()')).toBe(true);
+        });
+
+        it('should match various generic names', () => {
+          expect(pattern().test('const ret = getValue()')).toBe(true);
+          expect(pattern().test('const res = compute()')).toBe(true);
+          expect(pattern().test('const val = 42')).toBe(true);
+          expect(pattern().test('const arr = []')).toBe(true);
+          expect(pattern().test('const str = ""')).toBe(true);
+          expect(pattern().test('const num = 0')).toBe(true);
+          expect(pattern().test('const buf = Buffer.alloc(10)')).toBe(true);
+          expect(pattern().test('const ctx = createContext()')).toBe(true);
+          expect(pattern().test('const cfg = loadConfig()')).toBe(true);
+          expect(pattern().test('const opts = {}')).toBe(true);
+          expect(pattern().test('const args = []')).toBe(true);
+          expect(pattern().test('const params = {}')).toBe(true);
+        });
+      });
+
+      describe('should NOT match specific variable names', () => {
+        it('should NOT match prefixed/suffixed descriptive names', () => {
+          expect(pattern().test('const userData = {}')).toBe(false);
+          expect(pattern().test('const userResult = []')).toBe(false);
+          expect(pattern().test('const responseData = {}')).toBe(false);
+          expect(pattern().test('const dataItems = []')).toBe(false);
+          expect(pattern().test('const resultCount = 0')).toBe(false);
+          expect(pattern().test('const apiResponse = {}')).toBe(false);
+        });
+
+        it('should NOT match completely different names', () => {
+          expect(pattern().test('const user = {}')).toBe(false);
+          expect(pattern().test('const count = 0')).toBe(false);
+          expect(pattern().test('const message = ""')).toBe(false);
+          expect(pattern().test('const items = []')).toBe(false);
+          expect(pattern().test('const config = {}')).toBe(false);
+        });
+      });
+
+      describe('edge cases', () => {
+        it('should handle indentation', () => {
+          expect(pattern().test('  const data = {}')).toBe(true);
+          expect(pattern().test('\t\tlet result = []')).toBe(true);
+        });
+
+        it('should be case insensitive for keywords but match exact names', () => {
+          // Pattern is gi so it matches DATA, Result, etc.
+          expect(pattern().test('const DATA = {}')).toBe(true);
+          expect(pattern().test('const Result = []')).toBe(true);
+        });
+      });
+    });
+
+    describe('Python detection', () => {
+      const pattern = () => slopPatterns.generic_naming_py.pattern;
+
+      describe('should match generic variable assignments', () => {
+        it('should match simple assignments', () => {
+          expect(pattern().test('data = {}')).toBe(true);
+          expect(pattern().test('result = []')).toBe(true);
+          expect(pattern().test('item = None')).toBe(true);
+          expect(pattern().test('temp = 0')).toBe(true);
+          expect(pattern().test('value = "test"')).toBe(true);
+        });
+
+        it('should match type-annotated assignments', () => {
+          expect(pattern().test('data: dict = {}')).toBe(true);
+          expect(pattern().test('result: list = []')).toBe(true);
+          expect(pattern().test('value: str = ""')).toBe(true);
+        });
+
+        it('should match indented assignments', () => {
+          expect(pattern().test('    data = {}')).toBe(true);
+          expect(pattern().test('        result = []')).toBe(true);
+        });
+      });
+
+      describe('should NOT match for-in loop variables', () => {
+        it('should NOT match loop iteration variables', () => {
+          expect(pattern().test('for item in items:')).toBe(false);
+          expect(pattern().test('for data in dataset:')).toBe(false);
+          expect(pattern().test('for result in results:')).toBe(false);
+        });
+      });
+
+      describe('should NOT match specific names', () => {
+        it('should NOT match descriptive names', () => {
+          expect(pattern().test('user_data = {}')).toBe(false);
+          expect(pattern().test('api_result = []')).toBe(false);
+          expect(pattern().test('processed_items = []')).toBe(false);
+        });
+      });
+    });
+
+    describe('Rust detection', () => {
+      const pattern = () => slopPatterns.generic_naming_rust.pattern;
+
+      describe('should match let with generic names', () => {
+        it('should match let bindings', () => {
+          expect(pattern().test('let data = HashMap::new();')).toBe(true);
+          expect(pattern().test('let result = vec![];')).toBe(true);
+          expect(pattern().test('let item = None;')).toBe(true);
+          expect(pattern().test('let temp = 0;')).toBe(true);
+          expect(pattern().test('let value = String::new();')).toBe(true);
+        });
+
+        it('should match let mut bindings', () => {
+          expect(pattern().test('let mut data = HashMap::new();')).toBe(true);
+          expect(pattern().test('let mut result = vec![];')).toBe(true);
+          expect(pattern().test('let mut buf = Vec::new();')).toBe(true);
+        });
+
+        it('should match type-annotated bindings', () => {
+          expect(pattern().test('let data: HashMap<String, i32> = HashMap::new();')).toBe(true);
+          expect(pattern().test('let result: Vec<u8> = vec![];')).toBe(true);
+        });
+      });
+
+      describe('should NOT match specific names', () => {
+        it('should NOT match descriptive names', () => {
+          expect(pattern().test('let user_data = HashMap::new();')).toBe(false);
+          expect(pattern().test('let api_result = vec![];')).toBe(false);
+          expect(pattern().test('let buffer_size = 1024;')).toBe(false);
+        });
+      });
+    });
+
+    describe('Go detection', () => {
+      const pattern = () => slopPatterns.generic_naming_go.pattern;
+
+      describe('should match short declaration with generic names', () => {
+        it('should match := declarations', () => {
+          expect(pattern().test('data := make(map[string]int)')).toBe(true);
+          expect(pattern().test('result := []string{}')).toBe(true);
+          expect(pattern().test('item := nil')).toBe(true);
+          expect(pattern().test('temp := 0')).toBe(true);
+          expect(pattern().test('value := "test"')).toBe(true);
+        });
+
+        it('should match var declarations with :=', () => {
+          expect(pattern().test('var data := make(map[string]int)')).toBe(true);
+        });
+
+        it('should match ctx (common in Go)', () => {
+          expect(pattern().test('ctx := context.Background()')).toBe(true);
+        });
+      });
+
+      describe('should NOT match specific names', () => {
+        it('should NOT match descriptive names', () => {
+          expect(pattern().test('userData := make(map[string]int)')).toBe(false);
+          expect(pattern().test('apiResult := []string{}')).toBe(false);
+          expect(pattern().test('requestCtx := context.Background()')).toBe(false);
+        });
+      });
+    });
+
+    describe('file exclusion', () => {
+      it('should exclude JavaScript test files', () => {
+        const excludes = slopPatterns.generic_naming_js.exclude;
+        expect(isFileExcluded('utils.test.js', excludes)).toBe(true);
+        expect(isFileExcluded('helper.spec.ts', excludes)).toBe(true);
+        // Note: **/test/** and **/tests/** patterns require file to contain /test/ or /tests/
+        expect(isFileExcluded('project/test/utils.js', excludes)).toBe(true);
+        expect(isFileExcluded('project/tests/helper.ts', excludes)).toBe(true);
+        expect(isFileExcluded('src/utils.js', excludes)).toBe(false);
+      });
+
+      it('should exclude Python test files', () => {
+        const excludes = slopPatterns.generic_naming_py.exclude;
+        expect(isFileExcluded('test_utils.py', excludes)).toBe(true);
+        expect(isFileExcluded('utils_test.py', excludes)).toBe(true);
+        expect(isFileExcluded('conftest.py', excludes)).toBe(true);
+        expect(isFileExcluded('project/tests/test_api.py', excludes)).toBe(true);
+        expect(isFileExcluded('src/utils.py', excludes)).toBe(false);
+      });
+
+      it('should exclude Rust test files', () => {
+        const excludes = slopPatterns.generic_naming_rust.exclude;
+        expect(isFileExcluded('lib_test.rs', excludes)).toBe(true);
+        expect(isFileExcluded('lib_tests.rs', excludes)).toBe(true);
+        expect(isFileExcluded('project/tests/integration.rs', excludes)).toBe(true);
+        expect(isFileExcluded('src/lib.rs', excludes)).toBe(false);
+      });
+
+      it('should exclude Go test files', () => {
+        const excludes = slopPatterns.generic_naming_go.exclude;
+        expect(isFileExcluded('utils_test.go', excludes)).toBe(true);
+        expect(isFileExcluded('project/tests/api_test.go', excludes)).toBe(true);
+        expect(isFileExcluded('project/testdata/fixtures.go', excludes)).toBe(true);
+        expect(isFileExcluded('pkg/utils.go', excludes)).toBe(false);
+      });
+    });
+
+    describe('language filtering', () => {
+      it('should include JS generic naming in javascript patterns', () => {
+        const patterns = getPatternsForLanguage('javascript');
+        expect(patterns).toHaveProperty('generic_naming_js');
+      });
+
+      it('should include Python generic naming in python patterns', () => {
+        const patterns = getPatternsForLanguage('python');
+        expect(patterns).toHaveProperty('generic_naming_py');
+      });
+
+      it('should include Rust generic naming in rust patterns', () => {
+        const patterns = getPatternsForLanguage('rust');
+        expect(patterns).toHaveProperty('generic_naming_rust');
+      });
+
+      it('should include Go generic naming in go patterns', () => {
+        const patterns = getPatternsForLanguage('go');
+        expect(patterns).toHaveProperty('generic_naming_go');
+      });
+
+      it('should NOT include JS generic naming in python patterns', () => {
+        const patterns = getPatternsForLanguageOnly('python');
+        expect(patterns).not.toHaveProperty('generic_naming_js');
+      });
+    });
+
+    describe('ReDoS safety', () => {
+      const MAX_SAFE_TIME = 100; // ms
+
+      it('JS pattern should resist ReDoS attacks (<100ms)', () => {
+        const pattern = slopPatterns.generic_naming_js.pattern;
+        const inputs = [
+          'const ' + 'data'.repeat(10000) + ' = {}',
+          'const data ' + '='.repeat(10000) + ' {}',
+          'let ' + ' '.repeat(10000) + 'result = []',
+          'var data' + 'a'.repeat(10000) + ' = {}'
+        ];
+
+        inputs.forEach(input => {
+          const start = Date.now();
+          pattern.test(input);
+          expect(Date.now() - start).toBeLessThan(MAX_SAFE_TIME);
+        });
+      });
+
+      it('Python pattern should resist ReDoS attacks (<100ms)', () => {
+        const pattern = slopPatterns.generic_naming_py.pattern;
+        const inputs = [
+          'data' + ' '.repeat(10000) + '= {}',
+          ' '.repeat(10000) + 'result = []',
+          'for ' + 'item '.repeat(1000) + 'in items:',
+          'data' + '='.repeat(10000)
+        ];
+
+        inputs.forEach(input => {
+          const start = Date.now();
+          pattern.test(input);
+          expect(Date.now() - start).toBeLessThan(MAX_SAFE_TIME);
+        });
+      });
+
+      it('Rust pattern should resist ReDoS attacks (<100ms)', () => {
+        const pattern = slopPatterns.generic_naming_rust.pattern;
+        const inputs = [
+          'let ' + 'mut '.repeat(1000) + 'data = {};',
+          'let data' + ' '.repeat(10000) + '= {};',
+          'let ' + 'data'.repeat(10000) + ' = {};'
+        ];
+
+        inputs.forEach(input => {
+          const start = Date.now();
+          pattern.test(input);
+          expect(Date.now() - start).toBeLessThan(MAX_SAFE_TIME);
+        });
+      });
+
+      it('Go pattern should resist ReDoS attacks (<100ms)', () => {
+        const pattern = slopPatterns.generic_naming_go.pattern;
+        const inputs = [
+          'data' + ' '.repeat(10000) + ':= {}',
+          'var ' + 'data'.repeat(10000) + ' := {}',
+          'result' + ':'.repeat(10000) + '= []'
+        ];
+
+        inputs.forEach(input => {
+          const start = Date.now();
+          pattern.test(input);
+          expect(Date.now() - start).toBeLessThan(MAX_SAFE_TIME);
+        });
+      });
+    });
+  });
 });
