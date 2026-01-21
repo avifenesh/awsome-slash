@@ -135,10 +135,15 @@ After (human cleanup target):
 #### Types of Hallucinations
 
 1. **Hallucinated Imports**
-   ```python
-   # AI might generate:
-   from nonexistent_package import magic_function
-   import utils.helpers.deep.nested.thing  # Path doesn't exist
+   ```typescript
+   // AI might generate:
+   import { magicFunction } from 'nonexistent-package';
+   import { thing } from '@/utils/helpers/deep/nested/thing'; // Path doesn't exist
+   ```
+   ```rust
+   // Or in Rust:
+   use nonexistent_crate::magic_function;
+   use crate::utils::helpers::deep::nested::thing; // Module doesn't exist
    ```
 
 2. **Phantom References**
@@ -150,10 +155,11 @@ After (human cleanup target):
    ```
 
 3. **Fake API Usage**
-   ```python
-   # Using API methods that don't exist:
-   response.get_data_safely()  # Method doesn't exist
-   config.deep_merge(other)    # Not a real method
+   ```typescript
+   // Using API methods that don't exist:
+   response.getDataSafely();  // Method doesn't exist
+   config.deepMerge(other);   // Not a real method
+   await fs.readFileAsync();  // fs.promises.readFile, not this
    ```
 
 #### Detection Approach
@@ -170,29 +176,49 @@ After (human cleanup target):
 
 #### Common Patterns
 
-```python
-# Pattern 1: Empty with pass
-def important_function():
-    pass
+```typescript
+// Pattern 1: Empty function body
+function importantFunction(): void {
+  // TODO
+}
 
-# Pattern 2: NotImplementedError that will never be implemented
-def critical_feature():
-    raise NotImplementedError("TODO: implement this")
+// Pattern 2: Throw that will never be implemented
+function criticalFeature(): Result {
+  throw new Error('TODO: implement this');
+}
 
-# Pattern 3: Stub returns
-def calculate_total(items):
-    return 0  # Always returns 0
+// Pattern 3: Stub returns
+function calculateTotal(items: Item[]): number {
+  return 0; // Always returns 0
+}
 
-# Pattern 4: Placeholder logic
-def validate_input(data):
-    return True  # Always returns True
+// Pattern 4: Placeholder logic
+function validateInput(data: unknown): boolean {
+  return true; // Always returns true
+}
 
-# Pattern 5: Comment-only functions
-def process_data(data):
-    # This function processes the data
-    # It handles all edge cases
-    # And returns the processed result
-    pass
+// Pattern 5: Comment-only functions
+function processData(data: UserData): ProcessedData {
+  // This function processes the data
+  // It handles all edge cases
+  // And returns the processed result
+  return data as ProcessedData;
+}
+```
+
+```rust
+// Rust equivalents:
+fn important_function() {
+    todo!() // or unimplemented!()
+}
+
+fn calculate_total(_items: &[Item]) -> u32 {
+    0 // Always returns 0
+}
+
+fn validate_input(_data: &str) -> bool {
+    true // Always returns true
+}
 ```
 
 #### Why This Is Worse Than Missing Code
@@ -245,35 +271,30 @@ Result: BUZZWORD INFLATION DETECTED
 #### Patterns
 
 1. **Disproportionate Documentation**
-   ```python
-   def add(a, b):
-       """
-       Add two numbers together.
-
-       This function takes two numeric arguments and returns their sum.
-       It uses the built-in addition operator to perform the calculation.
-       The function supports both integers and floating-point numbers.
-
-       Args:
-           a: The first number to add. Can be int or float.
-           b: The second number to add. Can be int or float.
-
-       Returns:
-           The sum of a and b. Type matches input types.
-
-       Raises:
-           TypeError: If inputs are not numeric.
-
-       Example:
-           >>> add(2, 3)
-           5
-           >>> add(1.5, 2.5)
-           4.0
-       """
-       return a + b
+   ```typescript
+   /**
+    * Add two numbers together.
+    *
+    * This function takes two numeric arguments and returns their sum.
+    * It uses the built-in addition operator to perform the calculation.
+    * The function supports both integers and floating-point numbers.
+    *
+    * @param a - The first number to add. Can be integer or float.
+    * @param b - The second number to add. Can be integer or float.
+    * @returns The sum of a and b. Type matches input types.
+    * @throws {TypeError} If inputs are not numeric.
+    * @example
+    * ```ts
+    * add(2, 3) // => 5
+    * add(1.5, 2.5) // => 4.0
+    * ```
+    */
+   function add(a: number, b: number): number {
+     return a + b;
+   }
    ```
 
-   **23 lines of documentation for 1 line of code.**
+   **19 lines of JSDoc for 1 line of code.**
 
 2. **Security Theater Documentation**
    - 195-line SECURITY_TESTS_README for a coverage tool
@@ -306,23 +327,37 @@ LDR > 3.0 = Under-documented (separate concern)
 
 #### Examples
 
-```python
-# Database configured but never queried
-from sqlalchemy import create_engine
-engine = create_engine('postgresql://...')
-# ... no actual database operations anywhere
+```typescript
+// Database configured but never queried
+import { PrismaClient } from '@prisma/client';
+const prisma = new PrismaClient();
+// ... no actual database operations anywhere
 
-# Logging configured but never used
-import logging
-logging.basicConfig(level=logging.DEBUG, format='...')
-logger = logging.getLogger(__name__)
-# ... logger.X() never called
+// Logger configured but never used
+import pino from 'pino';
+const logger = pino({ level: 'debug' });
+// ... logger.info() never called
 
-# Auth middleware installed but bypassed
-@app.middleware
-def auth_middleware(request):
-    # TODO: implement authentication
-    return True
+// Auth middleware installed but bypassed
+app.use(async (req, res, next) => {
+  // TODO: implement authentication
+  next();
+});
+```
+
+```rust
+// Rust equivalent:
+use sqlx::PgPool;
+
+async fn setup() -> PgPool {
+    PgPool::connect("postgres://...").await.unwrap()
+}
+// ... pool never used for queries
+
+// Tracing configured but never used
+use tracing_subscriber;
+tracing_subscriber::init();
+// ... tracing::info!() never called
 ```
 
 #### The "Neo4j Pattern" (from vibe-check-mcp)
@@ -346,26 +381,55 @@ def auth_middleware(request):
 
 #### The Pattern
 
-```python
-def read_config_file(path):
-    # Unnecessary: path already validated 3 levels up
-    if path is None:
-        raise ValueError("Path cannot be None")
+```typescript
+function readConfigFile(path: string): Config {
+  // Unnecessary: path already validated 3 levels up
+  if (!path) {
+    throw new Error('Path cannot be null');
+  }
 
-    # Unnecessary: os.path.exists already called
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"File not found: {path}")
+  // Unnecessary: fs.existsSync already called by caller
+  if (!fs.existsSync(path)) {
+    throw new Error(`File not found: ${path}`);
+  }
 
-    # Unnecessary: this is a config reader, not a web server
-    if '../' in path:
-        raise SecurityError("Path traversal detected!")
+  // Unnecessary: this is a config reader, not a web server
+  if (path.includes('..')) {
+    throw new Error('Path traversal detected!');
+  }
 
-    # Unnecessary: we control the input
-    if len(path) > 10000:
-        raise ValueError("Path too long - possible attack")
+  // Unnecessary: we control the input
+  if (path.length > 10000) {
+    throw new Error('Path too long - possible attack');
+  }
 
-    # Finally, the actual logic (1 line)
-    return json.load(open(path))
+  // Finally, the actual logic (1 line)
+  return JSON.parse(fs.readFileSync(path, 'utf-8'));
+}
+```
+
+```rust
+// Rust equivalent:
+fn read_config_file(path: &Path) -> Result<Config, Error> {
+    // Unnecessary: path already validated by caller
+    if path.as_os_str().is_empty() {
+        return Err(Error::new("Path cannot be empty"));
+    }
+
+    // Unnecessary: already checked
+    if !path.exists() {
+        return Err(Error::new("File not found"));
+    }
+
+    // Unnecessary: this is internal tooling
+    if path.to_string_lossy().contains("..") {
+        return Err(Error::new("Path traversal detected!"));
+    }
+
+    // Finally, the actual logic
+    let content = std::fs::read_to_string(path)?;
+    serde_json::from_str(&content).map_err(Into::into)
+}
 ```
 
 ---
@@ -377,43 +441,69 @@ def read_config_file(path):
 #### Anti-Patterns
 
 1. **Single-Implementation Interface**
-   ```java
-   interface DataProcessor { void process(Data d); }
+   ```typescript
+   interface DataProcessor {
+     process(data: Data): void;
+   }
    class DataProcessorImpl implements DataProcessor { ... }
    // Only one implementation exists or will ever exist
    ```
 
 2. **Factory for One Product**
-   ```python
-   class ConnectionFactory:
-       def create_connection(self):
-           return DatabaseConnection()
-   # Only creates one type, no configuration, no variation
+   ```typescript
+   class ConnectionFactory {
+     createConnection(): DatabaseConnection {
+       return new DatabaseConnection();
+     }
+   }
+   // Only creates one type, no configuration, no variation
    ```
 
 3. **Strategy Pattern with One Strategy**
-   ```python
-   class SortStrategy(ABC):
-       @abstractmethod
-       def sort(self, items): pass
+   ```typescript
+   interface SortStrategy<T> {
+     sort(items: T[]): T[];
+   }
 
-   class QuickSortStrategy(SortStrategy):
-       def sort(self, items):
-           return sorted(items)
-
-   # Only one strategy, never extended, just call sorted()
+   class QuickSortStrategy<T> implements SortStrategy<T> {
+     sort(items: T[]): T[] {
+       return [...items].sort();
+     }
+   }
+   // Only one strategy, never extended, just call .sort()
    ```
 
 4. **Builder for Simple Objects**
-   ```python
-   user = UserBuilder()
-       .set_name("John")
-       .set_email("john@example.com")
-       .build()
+   ```typescript
+   const user = new UserBuilder()
+     .setName('John')
+     .setEmail('john@example.com')
+     .build();
 
-   # vs simply:
-   user = User(name="John", email="john@example.com")
+   // vs simply:
+   const user: User = { name: 'John', email: 'john@example.com' };
    ```
+
+```rust
+// Rust equivalents:
+
+// Trait with single implementation
+trait DataProcessor {
+    fn process(&self, data: &Data);
+}
+struct DataProcessorImpl;
+impl DataProcessor for DataProcessorImpl { ... }
+// Only one impl exists
+
+// Builder for simple struct
+let user = UserBuilder::new()
+    .name("John")
+    .email("john@example.com")
+    .build();
+
+// vs simply:
+let user = User { name: "John".into(), email: "john@example.com".into() };
+```
 
 ---
 
@@ -438,15 +528,29 @@ The core issue is not about using simple vs complex language - developers use te
 
 AI slop isn't about vocabulary choices alone. It's about **saying more than necessary**:
 
-```python
-# AI slop (bombastic, over-verbose):
-# This function is designed to facilitate the processing of user data
-# by leveraging advanced algorithms to ensure optimal performance.
-# It's worth noting that this implementation follows best practices
-# and has been carefully crafted to handle edge cases gracefully.
+```typescript
+// AI slop (bombastic, over-verbose):
+// This function is designed to facilitate the processing of user data
+// by leveraging advanced algorithms to ensure optimal performance.
+// It's worth noting that this implementation follows best practices
+// and has been carefully crafted to handle edge cases gracefully.
+function processUserData(data: UserData): ProcessedData { ... }
 
-# Direct (not slop):
-# Process user data. Returns cleaned dict.
+// Direct (not slop):
+// Process user data. Returns cleaned object.
+function processUserData(data: UserData): ProcessedData { ... }
+```
+
+```rust
+/// AI slop (bombastic, over-verbose):
+/// This function is designed to facilitate the processing of user data
+/// by leveraging advanced algorithms to ensure optimal performance.
+/// It's worth noting that this implementation follows best practices.
+pub fn process_user_data(data: &UserData) -> ProcessedData { ... }
+
+/// Direct (not slop):
+/// Process user data. Returns cleaned struct.
+pub fn process_user_data(data: &UserData) -> ProcessedData { ... }
 ```
 
 The difference: 4 lines of puffery vs 1 line of information. Both could use technical terms, but one inflates while the other communicates.
@@ -467,51 +571,72 @@ The test: **Does removing this text lose information?** If no, it's slop.
 
 #### Naming Patterns
 
-```python
-# Generic AI names (bad):
-data = get_data()
-result = process(data)
-item = fetch_item()
-temp = calculate_temp()
-value = get_value()
-output = generate_output()
+```typescript
+// Generic AI names (bad):
+const data = getData();
+const result = process(data);
+const item = fetchItem();
+const temp = calculateTemp();
+const value = getValue();
+const output = generateOutput();
 
-# Specific human names (good):
-user_profile = fetch_user_profile(user_id)
-monthly_revenue = calculate_revenue(transactions)
-validated_email = normalize_email(raw_input)
+// Specific human names (good):
+const userProfile = fetchUserProfile(userId);
+const monthlyRevenue = calculateRevenue(transactions);
+const validatedEmail = normalizeEmail(rawInput);
+```
+
+```rust
+// Rust equivalent:
+// Generic AI names (bad):
+let data = get_data();
+let result = process(&data);
+let item = fetch_item();
+
+// Specific human names (good):
+let user_profile = fetch_user_profile(user_id);
+let monthly_revenue = calculate_revenue(&transactions);
+let validated_email = normalize_email(&raw_input);
 ```
 
 #### Structural Tells
 
 1. **Inconsistent paradigms**: Mixing OOP and functional randomly
 2. **Over-consistent formatting**: Perfectly uniform where humans vary
-3. **Verbose method names**: `getUserDataFromDatabaseById` vs `get_user`
-4. **Unnecessary type hints on obvious types**:
-   ```python
-   def add(a: int, b: int) -> int:
-       result: int = a + b
-       return result
+3. **Verbose method names**: `getUserDataFromDatabaseById` vs `getUser`
+4. **Unnecessary type annotations on obvious types**:
+   ```typescript
+   function add(a: number, b: number): number {
+     const result: number = a + b;
+     return result;
+   }
+   ```
+   ```rust
+   fn add(a: i32, b: i32) -> i32 {
+       let result: i32 = a + b;
+       result
+   }
+   // Type inference handles this: let result = a + b;
    ```
 
 ---
 
 ## Professional Tools & Approaches
 
-### Tool 1: sloppylint (Python)
+### Tool 1: sloppylint
 
-**Purpose**: Detect AI-generated code anti-patterns in Python
+**Purpose**: Detect AI-generated code anti-patterns (Python-focused, concepts transferable)
 
 **Key Detection Areas**:
 1. **Noise** - Debug artifacts, redundant comments
 2. **Lies** - Hallucinations, placeholder functions
 3. **Soul** - Over-engineering, poor structure
-4. **Structure** - Language anti-patterns (bare except)
+4. **Structure** - Language anti-patterns
 
-**Critical Catches**:
-- Mutable default arguments
-- Bare exception handlers
-- Hallucinated imports
+**Transferable Concepts for TS/Rust**:
+- Hallucinated imports (non-existent packages/crates)
+- Empty catch/match blocks
+- Placeholder functions with `todo!()` or `throw`
 
 ### Tool 2: AI-SLOP-Detector
 
@@ -520,7 +645,7 @@ validated_email = normalize_email(raw_input)
 **Detection Categories**:
 1. Placeholder code (14 patterns)
 2. Buzzword inflation (quality claims vs evidence)
-3. Docstring inflation (doc/code ratio)
+3. Documentation inflation (doc/code ratio)
 4. Hallucinated dependencies (unused imports by category)
 5. Context-based jargon (15+ evidence types)
 6. CI/CD integration (enforcement modes)
@@ -596,12 +721,12 @@ validated_email = normalize_email(raw_input)
 ### Priority 1: Quick Wins (Easy, High Impact)
 
 1. **Placeholder Function Detection**
-   - Empty functions with `pass`
-   - `NotImplementedError` without clear extension point
-   - Functions returning hardcoded values (0, True, None, [])
+   - Empty function bodies or `// TODO` only
+   - `throw new Error('not implemented')` / `todo!()` / `unimplemented!()`
+   - Functions returning hardcoded values (0, true, null, [])
 
 2. **Doc/Code Ratio**
-   - Flag docstrings > function length
+   - Flag JSDoc/doc comments > function length
    - Detect boilerplate doc patterns
 
 3. **Phantom Reference Validation**
@@ -656,7 +781,7 @@ Given the project philosophy ("Minimal context/token consumption - Agents should
    - Key contribution: Concrete metrics and real-world examples
 
 2. **sloppylint**
-   - "Python AI Slop Detector"
+   - "AI Slop Detector" (Python-focused, concepts apply to any language)
    - URL: https://github.com/rsionnach/sloppylint
    - Key contribution: 4-category detection framework (Noise, Lies, Soul, Structure)
 
