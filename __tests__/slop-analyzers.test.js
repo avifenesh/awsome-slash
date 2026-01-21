@@ -7,6 +7,7 @@ const {
   analyzeDocCodeRatio,
   analyzeVerbosityRatio,
   analyzeOverEngineering,
+  analyzeInfrastructureWithoutImplementation,
   findMatchingBrace,
   countNonEmptyLines,
   countExportsInContent,
@@ -18,7 +19,10 @@ const {
   EXPORT_PATTERNS,
   SOURCE_EXTENSIONS,
   EXCLUDE_DIRS,
-  COMMENT_SYNTAX
+  COMMENT_SYNTAX,
+  INFRASTRUCTURE_SUFFIXES,
+  SETUP_VERBS,
+  INSTANTIATION_PATTERNS
 } = require('../lib/patterns/slop-analyzers');
 
 describe('slop-analyzers', () => {
@@ -1926,6 +1930,605 @@ try {
             for (const pattern of patterns) {
               expect(pattern).toBeInstanceOf(RegExp);
             }
+          }
+        }
+      });
+    });
+  });
+
+  describe('analyzeInfrastructureWithoutImplementation', () => {
+    // Mock fs and path modules for testing
+    const mockFs = {
+      readdirSync: jest.fn(),
+      readFileSync: jest.fn(),
+      statSync: jest.fn()
+    };
+
+    const mockPath = {
+      join: (...args) => args.join('/'),
+      relative: (from, to) => to.replace(from + '/', ''),
+      extname: (file) => {
+        const lastDot = file.lastIndexOf('.');
+        return lastDot > -1 ? file.substring(lastDot) : '';
+      }
+    };
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    describe('JavaScript client instantiation detection', () => {
+      it('should detect unused new Client() instantiation', () => {
+        const mockFiles = {
+          'src/app.js': `
+const express = require('express');
+const RedisClient = require('redis');
+
+const app = express();
+const redisClient = new RedisClient({
+  host: 'localhost',
+  port: 6379
+});
+
+app.get('/', (req, res) => {
+  res.send('Hello World');
+});
+
+app.listen(3000);
+`,
+          'src/utils.js': `
+function helper() {
+  return 42;
+}
+
+module.exports = { helper };
+`
+        };
+
+        // Mock file system
+        mockFs.readdirSync.mockImplementation((dir) => {
+          if (dir === '.') {
+            return [
+              { name: 'src', isDirectory: () => true, isFile: () => false }
+            ];
+          }
+          if (dir === 'src') {
+            return [
+              { name: 'app.js', isDirectory: () => false, isFile: () => true },
+              { name: 'utils.js', isDirectory: () => false, isFile: () => true }
+            ];
+          }
+          return [];
+        });
+
+        mockFs.readFileSync.mockImplementation((path) => {
+          const file = path.replace('./', '');
+          if (mockFiles[file]) return mockFiles[file];
+          throw new Error(`File not found: ${path}`);
+        });
+
+        const result = analyzeInfrastructureWithoutImplementation('.', {
+          fs: mockFs,
+          path: mockPath
+        });
+
+        expect(result.setupsFound).toBe(1);
+        expect(result.usagesFound).toBe(0);
+        expect(result.violations.length).toBe(1);
+        expect(result.violations[0].varName).toBe('redisClient');
+        expect(result.violations[0].type).toBe('RedisClient');
+        expect(result.verdict).toBe('LOW');
+      });
+
+      it('should not flag client used in same file', () => {
+        const mockFiles = {
+          'src/app.js': `
+const RedisClient = require('redis');
+
+const redisClient = new RedisClient({
+  host: 'localhost',
+  port: 6379
+});
+
+async function getData(key) {
+  return await redisClient.get(key);
+}
+
+module.exports = { getData };
+`
+        };
+
+        mockFs.readdirSync.mockImplementation((dir) => {
+          if (dir === '.') {
+            return [
+              { name: 'src', isDirectory: () => true, isFile: () => false }
+            ];
+          }
+          if (dir === 'src') {
+            return [
+              { name: 'app.js', isDirectory: () => false, isFile: () => true }
+            ];
+          }
+          return [];
+        });
+
+        mockFs.readFileSync.mockImplementation((path) => {
+          const file = path.replace('./', '');
+          if (mockFiles[file]) return mockFiles[file];
+          throw new Error(`File not found: ${path}`);
+        });
+
+        const result = analyzeInfrastructureWithoutImplementation('.', {
+          fs: mockFs,
+          path: mockPath
+        });
+
+        expect(result.setupsFound).toBe(1);
+        expect(result.usagesFound).toBe(1);
+        expect(result.violations.length).toBe(0);
+        expect(result.verdict).toBe('OK');
+      });
+
+      it('should detect unused factory pattern createClient()', () => {
+        const mockFiles = {
+          'src/db.js': `
+const { createConnection } = require('mysql');
+
+const dbConnection = createConnection({
+  host: 'localhost',
+  user: 'root',
+  password: 'secret',
+  database: 'myapp'
+});
+
+module.exports = {};
+`
+        };
+
+        mockFs.readdirSync.mockImplementation((dir) => {
+          if (dir === '.') {
+            return [
+              { name: 'src', isDirectory: () => true, isFile: () => false }
+            ];
+          }
+          if (dir === 'src') {
+            return [
+              { name: 'db.js', isDirectory: () => false, isFile: () => true }
+            ];
+          }
+          return [];
+        });
+
+        mockFs.readFileSync.mockImplementation((path) => {
+          const file = path.replace('./', '');
+          if (mockFiles[file]) return mockFiles[file];
+          throw new Error(`File not found: ${path}`);
+        });
+
+        const result = analyzeInfrastructureWithoutImplementation('.', {
+          fs: mockFs,
+          path: mockPath
+        });
+
+        expect(result.setupsFound).toBe(1);
+        expect(result.usagesFound).toBe(0);
+        expect(result.violations.length).toBe(1);
+        expect(result.violations[0].varName).toBe('dbConnection');
+        expect(result.verdict).toBe('LOW');
+      });
+    });
+
+    describe('Python class instantiation detection', () => {
+      it('should detect unused Python client instantiation', () => {
+        const mockFiles = {
+          'app.py': `
+import redis
+from flask import Flask
+
+app = Flask(__name__)
+redis_client = redis.RedisClient(host='localhost', port=6379)
+
+@app.route('/')
+def index():
+    return 'Hello World'
+
+if __name__ == '__main__':
+    app.run()
+`
+        };
+
+        mockFs.readdirSync.mockImplementation((dir) => {
+          if (dir === '.') {
+            return [
+              { name: 'app.py', isDirectory: () => false, isFile: () => true }
+            ];
+          }
+          return [];
+        });
+
+        mockFs.readFileSync.mockImplementation((path) => {
+          const file = path.replace('./', '');
+          if (mockFiles[file]) return mockFiles[file];
+          throw new Error(`File not found: ${path}`);
+        });
+
+        const result = analyzeInfrastructureWithoutImplementation('.', {
+          fs: mockFs,
+          path: mockPath
+        });
+
+        expect(result.setupsFound).toBe(1);
+        expect(result.usagesFound).toBe(0);
+        expect(result.violations.length).toBe(1);
+        expect(result.violations[0].varName).toBe('redis_client');
+        expect(result.verdict).toBe('LOW');
+      });
+    });
+
+    describe('Go New* function detection', () => {
+      it('should detect unused Go NewClient() pattern', () => {
+        const mockFiles = {
+          'main.go': `
+package main
+
+import (
+    "fmt"
+    "github.com/go-redis/redis"
+)
+
+func main() {
+    redisClient := redis.NewClient(&redis.Options{
+        Addr: "localhost:6379",
+    })
+
+    fmt.Println("Server starting...")
+}
+`
+        };
+
+        mockFs.readdirSync.mockImplementation((dir) => {
+          if (dir === '.') {
+            return [
+              { name: 'main.go', isDirectory: () => false, isFile: () => true }
+            ];
+          }
+          return [];
+        });
+
+        mockFs.readFileSync.mockImplementation((path) => {
+          const file = path.replace('./', '');
+          if (mockFiles[file]) return mockFiles[file];
+          throw new Error(`File not found: ${path}`);
+        });
+
+        const result = analyzeInfrastructureWithoutImplementation('.', {
+          fs: mockFs,
+          path: mockPath
+        });
+
+        expect(result.setupsFound).toBe(1);
+        expect(result.usagesFound).toBe(0);
+        expect(result.violations.length).toBe(1);
+        expect(result.violations[0].varName).toBe('redisClient');
+        expect(result.verdict).toBe('LOW');
+      });
+
+      it('should not flag Go client used in function', () => {
+        const mockFiles = {
+          'main.go': `
+package main
+
+import (
+    "github.com/go-redis/redis"
+)
+
+func main() {
+    redisClient := redis.NewClient(&redis.Options{
+        Addr: "localhost:6379",
+    })
+
+    value, err := redisClient.Get("key").Result()
+    if err != nil {
+        panic(err)
+    }
+}
+`
+        };
+
+        mockFs.readdirSync.mockImplementation((dir) => {
+          if (dir === '.') {
+            return [
+              { name: 'main.go', isDirectory: () => false, isFile: () => true }
+            ];
+          }
+          return [];
+        });
+
+        mockFs.readFileSync.mockImplementation((path) => {
+          const file = path.replace('./', '');
+          if (mockFiles[file]) return mockFiles[file];
+          throw new Error(`File not found: ${path}`);
+        });
+
+        const result = analyzeInfrastructureWithoutImplementation('.', {
+          fs: mockFs,
+          path: mockPath
+        });
+
+        expect(result.setupsFound).toBe(1);
+        expect(result.usagesFound).toBe(1);
+        expect(result.violations.length).toBe(0);
+        expect(result.verdict).toBe('OK');
+      });
+    });
+
+    describe('Rust ::new() constructor detection', () => {
+      it('should detect unused Rust Client::new() pattern', () => {
+        const mockFiles = {
+          'src/main.rs': `
+use redis::Client;
+
+fn main() {
+    let redis_client = Client::new("redis://localhost/").unwrap();
+
+    println!("Starting server...");
+}
+`
+        };
+
+        mockFs.readdirSync.mockImplementation((dir) => {
+          if (dir === '.') {
+            return [
+              { name: 'src', isDirectory: () => true, isFile: () => false }
+            ];
+          }
+          if (dir === 'src') {
+            return [
+              { name: 'main.rs', isDirectory: () => false, isFile: () => true }
+            ];
+          }
+          return [];
+        });
+
+        mockFs.readFileSync.mockImplementation((path) => {
+          const file = path.replace('./', '');
+          if (mockFiles[file]) return mockFiles[file];
+          throw new Error(`File not found: ${path}`);
+        });
+
+        const result = analyzeInfrastructureWithoutImplementation('.', {
+          fs: mockFs,
+          path: mockPath
+        });
+
+        expect(result.setupsFound).toBe(1);
+        expect(result.usagesFound).toBe(0);
+        expect(result.violations.length).toBe(1);
+        expect(result.violations[0].varName).toBe('redis_client');
+        expect(result.verdict).toBe('LOW');
+      });
+    });
+
+    describe('Cross-file usage detection', () => {
+      it('should not flag client used in different file', () => {
+        const mockFiles = {
+          'src/db.js': `
+const { createConnection } = require('mysql');
+
+const dbConnection = createConnection({
+  host: 'localhost',
+  user: 'root'
+});
+
+module.exports = { dbConnection };
+`,
+          'src/queries.js': `
+const { dbConnection } = require('./db');
+
+async function getUsers() {
+  return dbConnection.query('SELECT * FROM users');
+}
+
+module.exports = { getUsers };
+`
+        };
+
+        mockFs.readdirSync.mockImplementation((dir) => {
+          if (dir === '.') {
+            return [
+              { name: 'src', isDirectory: () => true, isFile: () => false }
+            ];
+          }
+          if (dir === 'src') {
+            return [
+              { name: 'db.js', isDirectory: () => false, isFile: () => true },
+              { name: 'queries.js', isDirectory: () => false, isFile: () => true }
+            ];
+          }
+          return [];
+        });
+
+        mockFs.readFileSync.mockImplementation((path) => {
+          const file = path.replace('./', '');
+          if (mockFiles[file]) return mockFiles[file];
+          throw new Error(`File not found: ${path}`);
+        });
+
+        const result = analyzeInfrastructureWithoutImplementation('.', {
+          fs: mockFs,
+          path: mockPath
+        });
+
+        expect(result.setupsFound).toBe(1);
+        expect(result.usagesFound).toBe(1);
+        expect(result.violations.length).toBe(0);
+        expect(result.verdict).toBe('OK');
+      });
+    });
+
+    describe('False positive prevention', () => {
+      it('should not flag exported infrastructure', () => {
+        const mockFiles = {
+          'src/redis.js': `
+const redis = require('redis');
+
+export const redisClient = redis.createClient({
+  host: process.env.REDIS_HOST
+});
+`
+        };
+
+        mockFs.readdirSync.mockImplementation((dir) => {
+          if (dir === '.') {
+            return [
+              { name: 'src', isDirectory: () => true, isFile: () => false }
+            ];
+          }
+          if (dir === 'src') {
+            return [
+              { name: 'redis.js', isDirectory: () => false, isFile: () => true }
+            ];
+          }
+          return [];
+        });
+
+        mockFs.readFileSync.mockImplementation((path) => {
+          const file = path.replace('./', '');
+          if (mockFiles[file]) return mockFiles[file];
+          throw new Error(`File not found: ${path}`);
+        });
+
+        const result = analyzeInfrastructureWithoutImplementation('.', {
+          fs: mockFs,
+          path: mockPath
+        });
+
+        expect(result.violations.length).toBe(0);
+        expect(result.verdict).toBe('OK');
+      });
+
+      it('should not flag module.exports infrastructure', () => {
+        const mockFiles = {
+          'src/db.js': `
+const mysql = require('mysql');
+
+const pool = mysql.createPool({
+  host: 'localhost'
+});
+
+module.exports.pool = pool;
+`
+        };
+
+        mockFs.readdirSync.mockImplementation((dir) => {
+          if (dir === '.') {
+            return [
+              { name: 'src', isDirectory: () => true, isFile: () => false }
+            ];
+          }
+          if (dir === 'src') {
+            return [
+              { name: 'db.js', isDirectory: () => false, isFile: () => true }
+            ];
+          }
+          return [];
+        });
+
+        mockFs.readFileSync.mockImplementation((path) => {
+          const file = path.replace('./', '');
+          if (mockFiles[file]) return mockFiles[file];
+          throw new Error(`File not found: ${path}`);
+        });
+
+        const result = analyzeInfrastructureWithoutImplementation('.', {
+          fs: mockFs,
+          path: mockPath
+        });
+
+        expect(result.violations.length).toBe(0);
+        expect(result.verdict).toBe('OK');
+      });
+
+      it('should skip test files', () => {
+        const mockFiles = {
+          'test/redis.test.js': `
+const RedisClient = require('../src/redis');
+
+describe('Redis tests', () => {
+  const testClient = new RedisClient();
+
+  it('should connect', () => {
+    expect(true).toBe(true);
+  });
+});
+`
+        };
+
+        mockFs.readdirSync.mockImplementation((dir) => {
+          if (dir === '.') {
+            return [
+              { name: 'test', isDirectory: () => true, isFile: () => false }
+            ];
+          }
+          if (dir === 'test') {
+            return [
+              { name: 'redis.test.js', isDirectory: () => false, isFile: () => true }
+            ];
+          }
+          return [];
+        });
+
+        mockFs.readFileSync.mockImplementation((path) => {
+          const file = path.replace('./', '');
+          if (mockFiles[file]) return mockFiles[file];
+          throw new Error(`File not found: ${path}`);
+        });
+
+        const result = analyzeInfrastructureWithoutImplementation('.', {
+          fs: mockFs,
+          path: mockPath
+        });
+
+        expect(result.setupsFound).toBe(0); // Test files are skipped
+        expect(result.violations.length).toBe(0);
+        expect(result.verdict).toBe('OK');
+      });
+    });
+
+    describe('Constants validation', () => {
+      it('should have infrastructure suffixes defined', () => {
+        expect(INFRASTRUCTURE_SUFFIXES).toBeDefined();
+        expect(Array.isArray(INFRASTRUCTURE_SUFFIXES)).toBe(true);
+        expect(INFRASTRUCTURE_SUFFIXES.length).toBeGreaterThan(0);
+        expect(INFRASTRUCTURE_SUFFIXES).toContain('Client');
+        expect(INFRASTRUCTURE_SUFFIXES).toContain('Connection');
+        expect(INFRASTRUCTURE_SUFFIXES).toContain('Pool');
+        expect(INFRASTRUCTURE_SUFFIXES).toContain('Service');
+      });
+
+      it('should have setup verbs defined', () => {
+        expect(SETUP_VERBS).toBeDefined();
+        expect(Array.isArray(SETUP_VERBS)).toBe(true);
+        expect(SETUP_VERBS.length).toBeGreaterThan(0);
+        expect(SETUP_VERBS).toContain('create');
+        expect(SETUP_VERBS).toContain('connect');
+        expect(SETUP_VERBS).toContain('init');
+        expect(SETUP_VERBS).toContain('setup');
+      });
+
+      it('should have instantiation patterns for all languages', () => {
+        expect(INSTANTIATION_PATTERNS).toBeDefined();
+        expect(INSTANTIATION_PATTERNS).toHaveProperty('js');
+        expect(INSTANTIATION_PATTERNS).toHaveProperty('python');
+        expect(INSTANTIATION_PATTERNS).toHaveProperty('go');
+        expect(INSTANTIATION_PATTERNS).toHaveProperty('rust');
+
+        // Each language should have an array of regex patterns
+        for (const [lang, patterns] of Object.entries(INSTANTIATION_PATTERNS)) {
+          expect(Array.isArray(patterns)).toBe(true);
+          expect(patterns.length).toBeGreaterThan(0);
+          for (const pattern of patterns) {
+            expect(pattern).toBeInstanceOf(RegExp);
           }
         }
       });
