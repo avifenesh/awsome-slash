@@ -688,10 +688,10 @@ let validated_email = normalize_email(&raw_input);
 | Placeholder functions (compilable stubs) | ✅ **Implemented** | **High** | Easy | v2.6.1 - Comprehensive for TS/JS/Rust/Python/Go/Java |
 | Doc/code ratio | ✅ **Committed** | **Medium** | Easy | main branch - `doc_code_ratio_js` pattern with multi-pass analysis |
 | Phantom references in comments | ✅ **Committed** | **Medium** | Easy | main branch - `issue_pr_references`, `file_path_references` patterns |
-| Over-engineering metrics | ⏳ **TODO** | **Critical** | Medium | Priority 3 - Lines per feature, file count, abstraction depth |
+| Over-engineering metrics | ✅ **Committed** | **Critical** | Medium | main branch - `over_engineering_metrics` pattern |
+| Generic naming | ✅ **Merged** | **Medium** | Medium | main branch - 4 patterns for JS/TS/Python/Rust/Go |
+| Verbosity detection | ✅ **Committed** | **Medium** | Medium | main branch - 4 patterns (preambles, buzzwords, hedging, ratio) |
 | Buzzword inflation | ⏳ **TODO** | **High** | Hard | Priority 3 - Claim extraction vs evidence search |
-| Generic naming | ⏳ **TODO** | **Medium** | Medium | Priority 2 - Flag data/result/temp/value overuse |
-| Verbosity detection | ⏳ **TODO** | **Medium** | Medium | Priority 2 - Comment-to-code ratio, bombastic phrasing |
 | Unnecessary abstraction | ⏳ **Future** | **Medium** | Hard | Post-release consideration |
 
 > **Note**: Hallucinated imports, fake API calls, type errors are already caught by eslint/tsc/clippy.
@@ -709,9 +709,9 @@ let validated_email = normalize_email(&raw_input);
 | Priority | Tasks | Status | Release |
 |----------|-------|--------|---------|
 | Priority 1 (Quick Wins) | 3 tasks | ✅ 100% Complete | Pending |
-| Priority 2 (Medium Effort) | 2 tasks | ⏳ 50% Complete | Pending |
+| Priority 2 (Medium Effort) | 2 tasks | ✅ 100% Complete | Pending |
 | Priority 3 (Advanced) | 2 tasks | ⏳ 50% Complete | Pending |
-| **Total** | **7 tasks** | **5/7 (71%)** | **After 100%** |
+| **Total** | **7 tasks** | **6/7 (86%)** | **After 100%** |
 
 **Commits on main (not released):**
 - `5950ccb` - feat(deslop): add generic naming detection for JS/TS, Python, Rust, Go (#110)
@@ -745,7 +745,7 @@ let validated_email = normalize_email(&raw_input);
    - **Patterns**: `issue_pr_references` (autoFix: remove), `file_path_references` (autoFix: flag)
    - **Status**: Comprehensive regex tests with ReDoS protection
 
-### Priority 2: Medium Effort (Medium, High Impact) - ⏳ PENDING
+### Priority 2: Medium Effort (Medium, High Impact) - ✅ COMPLETE
 
 ~~4. **Generic Naming Detection**~~ ✅ **DONE** (Merged to main, v2.7.0)
    - Patterns: `generic_naming_js`, `generic_naming_py`, `generic_naming_rust`, `generic_naming_go`
@@ -754,12 +754,14 @@ let validated_email = normalize_email(&raw_input);
    - Go pattern fixed to remove invalid `var` with `:=` syntax
    - **Status**: 38 tests, 95%+ coverage, ReDoS protection, PR #110 merged
 
-5. **Verbosity Detection** ⏳ TODO
-   - Comment-to-code ratio per function
-   - Flag comments that restate obvious code
-   - Detect bombastic phrasing patterns
-   - **Difficulty**: Medium (AST or line analysis)
-   - **Impact**: Medium (reduces noise)
+~~5. **Verbosity Detection**~~ ✅ **DONE** (Committed, not released)
+   - `verbosity_preambles` - AI preamble phrases in comments (Certainly!, I'd be happy to help!)
+   - `verbosity_buzzwords` - Marketing buzzwords (synergize, paradigm shift, game-changing)
+   - `verbosity_hedging` - Hedging language (perhaps, might be, should work)
+   - `verbosity_ratio` - Inline comment-to-code ratio (multi-pass analyzer, >2:1 threshold)
+   - **Patterns**: 4 new patterns in `lib/patterns/slop-patterns.js`
+   - **Analyzer**: `analyzeVerbosityRatio()` in `lib/patterns/slop-analyzers.js`
+   - **Status**: 70+ tests, comprehensive coverage
 
 ### Priority 3: Advanced (Hard, Critical Impact) - ⏳ 50% COMPLETE
 

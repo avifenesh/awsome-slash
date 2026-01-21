@@ -1827,6 +1827,222 @@ describe('slop-patterns', () => {
     });
   });
 
+  // ============================================================================
+  // Verbosity Detection Patterns
+  // ============================================================================
+
+  describe('verbosity_preambles', () => {
+    const pattern = slopPatterns.verbosity_preambles.pattern;
+
+    it('should detect "certainly" preamble', () => {
+      expect(pattern.test('// Certainly, this function handles...')).toBe(true);
+    });
+
+    it('should detect "I\'d be happy" preamble', () => {
+      expect(pattern.test("// I'd be happy to explain this...")).toBe(true);
+    });
+
+    it('should detect "great question" preamble', () => {
+      expect(pattern.test('// Great question! This method...')).toBe(true);
+    });
+
+    it('should detect "absolutely" preamble', () => {
+      expect(pattern.test('// Absolutely, we can do this...')).toBe(true);
+    });
+
+    it('should detect "of course" preamble', () => {
+      expect(pattern.test('// Of course, this is simple...')).toBe(true);
+    });
+
+    it('should detect "happy to help" preamble', () => {
+      expect(pattern.test('// Happy to help with this...')).toBe(true);
+    });
+
+    it('should detect "let me help" preamble', () => {
+      expect(pattern.test('// Let me help you understand...')).toBe(true);
+    });
+
+    it('should NOT match normal comments', () => {
+      expect(pattern.test('// This function validates input')).toBe(false);
+      expect(pattern.test('// Calculate the total price')).toBe(false);
+    });
+
+    it('should NOT match code containing these words', () => {
+      expect(pattern.test('const certainly = true;')).toBe(false);
+    });
+  });
+
+  describe('verbosity_buzzwords', () => {
+    const pattern = slopPatterns.verbosity_buzzwords.pattern;
+
+    it('should detect "synergize"', () => {
+      expect(pattern.test('// This will synergize our systems')).toBe(true);
+    });
+
+    it('should detect "operationalize"', () => {
+      expect(pattern.test('// We need to operationalize this strategy')).toBe(true);
+    });
+
+    it('should detect "paradigm shift"', () => {
+      expect(pattern.test('This represents a paradigm shift in our approach')).toBe(true);
+    });
+
+    it('should detect "best-in-class"', () => {
+      expect(pattern.test('Our best-in-class solution')).toBe(true);
+    });
+
+    it('should detect "world-class"', () => {
+      expect(pattern.test('A world-class implementation')).toBe(true);
+    });
+
+    it('should detect "cutting-edge"', () => {
+      expect(pattern.test('Using cutting-edge technology')).toBe(true);
+    });
+
+    it('should detect "game-changing"', () => {
+      expect(pattern.test('This is a game-changing feature')).toBe(true);
+    });
+
+    it('should detect "holistic"', () => {
+      expect(pattern.test('A holistic approach to the problem')).toBe(true);
+    });
+
+    it('should detect "revolutionary"', () => {
+      expect(pattern.test('Our revolutionary new algorithm')).toBe(true);
+    });
+
+    it('should detect "transformative"', () => {
+      expect(pattern.test('A transformative update')).toBe(true);
+    });
+
+    it('should detect "seamless"', () => {
+      expect(pattern.test('For a seamless experience')).toBe(true);
+    });
+
+    it('should detect "next-generation"', () => {
+      expect(pattern.test('Our next-generation platform')).toBe(true);
+    });
+
+    it('should detect "bleeding-edge"', () => {
+      expect(pattern.test('Using bleeding-edge techniques')).toBe(true);
+    });
+
+    it('should detect "industry-leading"', () => {
+      expect(pattern.test('An industry-leading solution')).toBe(true);
+    });
+
+    it('should NOT match standard SE terms like leverage', () => {
+      expect(pattern.test('// leverage the existing API')).toBe(false);
+    });
+
+    it('should NOT match standard SE terms like utilize', () => {
+      expect(pattern.test('// utilize the cache')).toBe(false);
+    });
+
+    it('should NOT match standard SE terms like orchestrate', () => {
+      expect(pattern.test('// orchestrate the services')).toBe(false);
+    });
+
+    it('should NOT match normal technical language', () => {
+      expect(pattern.test('// This function validates the input')).toBe(false);
+      expect(pattern.test('// Initialize the connection pool')).toBe(false);
+    });
+  });
+
+  describe('verbosity_hedging', () => {
+    const pattern = slopPatterns.verbosity_hedging.pattern;
+
+    it('should detect "it\'s worth noting"', () => {
+      expect(pattern.test("// It's worth noting that this...")).toBe(true);
+    });
+
+    it('should detect "its worth noting" (without apostrophe)', () => {
+      expect(pattern.test('// Its worth noting that...')).toBe(true);
+    });
+
+    it('should detect "generally speaking"', () => {
+      expect(pattern.test('// Generally speaking, this works...')).toBe(true);
+    });
+
+    it('should detect "more or less"', () => {
+      expect(pattern.test('// This is more or less correct')).toBe(true);
+    });
+
+    it('should detect "arguably"', () => {
+      expect(pattern.test('// Arguably, this is the best approach')).toBe(true);
+    });
+
+    it('should detect "perhaps"', () => {
+      expect(pattern.test('// Perhaps we should consider...')).toBe(true);
+    });
+
+    it('should detect "possibly"', () => {
+      expect(pattern.test('// Possibly this could fail...')).toBe(true);
+    });
+
+    it('should detect "might be"', () => {
+      expect(pattern.test('// This might be slow...')).toBe(true);
+    });
+
+    it('should detect "should work"', () => {
+      expect(pattern.test('// This should work in most cases')).toBe(true);
+    });
+
+    it('should detect "i think"', () => {
+      expect(pattern.test('// I think this is correct')).toBe(true);
+    });
+
+    it('should detect "i believe"', () => {
+      expect(pattern.test('// I believe this handles all cases')).toBe(true);
+    });
+
+    it('should detect "probably"', () => {
+      expect(pattern.test('// This is probably fine')).toBe(true);
+    });
+
+    it('should detect "maybe"', () => {
+      expect(pattern.test('// Maybe we need to refactor')).toBe(true);
+    });
+
+    it('should NOT match code, only comments', () => {
+      expect(pattern.test('const perhaps = true;')).toBe(false);
+      expect(pattern.test('if (maybe) { return; }')).toBe(false);
+    });
+
+    it('should NOT match definitive comments', () => {
+      expect(pattern.test('// This function validates input')).toBe(false);
+      expect(pattern.test('// Returns the computed hash')).toBe(false);
+    });
+  });
+
+  describe('verbosity_ratio (multi-pass pattern)', () => {
+    const pattern = slopPatterns.verbosity_ratio;
+
+    it('should be a multi-pass pattern', () => {
+      expect(pattern.pattern).toBeNull();
+      expect(pattern.requiresMultiPass).toBe(true);
+    });
+
+    it('should have maxCommentRatio option', () => {
+      expect(pattern.maxCommentRatio).toBe(2.0);
+    });
+
+    it('should have minCodeLines option', () => {
+      expect(pattern.minCodeLines).toBe(3);
+    });
+
+    it('should have medium severity', () => {
+      expect(pattern.severity).toBe('medium');
+    });
+  });
+
+  describe('getMultiPassPatterns includes verbosity_ratio', () => {
+    it('should include verbosity_ratio pattern', () => {
+      const multiPassPatterns = getMultiPassPatterns();
+      expect(multiPassPatterns).toHaveProperty('verbosity_ratio');
+    });
+  });
+
   describe('analyzers export', () => {
     it('should export analyzers module', () => {
       expect(analyzers).toBeDefined();
@@ -1838,6 +2054,10 @@ describe('slop-patterns', () => {
 
     it('should have analyzeOverEngineering function', () => {
       expect(typeof analyzers.analyzeOverEngineering).toBe('function');
+    });
+
+    it('should have analyzeVerbosityRatio function', () => {
+      expect(typeof analyzers.analyzeVerbosityRatio).toBe('function');
     });
   });
 });

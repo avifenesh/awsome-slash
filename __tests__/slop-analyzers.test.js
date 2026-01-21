@@ -5,17 +5,20 @@
 
 const {
   analyzeDocCodeRatio,
+  analyzeVerbosityRatio,
   analyzeOverEngineering,
   findMatchingBrace,
   countNonEmptyLines,
   countExportsInContent,
   detectLanguage,
+  detectCommentLanguage,
   shouldExclude,
   isTestFile,
   ENTRY_POINTS,
   EXPORT_PATTERNS,
   SOURCE_EXTENSIONS,
-  EXCLUDE_DIRS
+  EXCLUDE_DIRS,
+  COMMENT_SYNTAX
 } = require('../lib/patterns/slop-analyzers');
 
 describe('slop-analyzers', () => {
@@ -459,6 +462,86 @@ function foo() {
       const content = '{ const s = "escaped \\"quote\\" here"; return s; }';
       const result = findMatchingBrace(content, 0);
       expect(result).toBe(48); // Index of final }
+    });
+
+    // Comment-skipping tests (bug fix for apostrophes in comments)
+    it('should skip single-line comments with apostrophes', () => {
+      const content = `{
+  // This comment has an apostrophe - it's broken
+  const x = 1;
+  return x;
+}`;
+      const result = findMatchingBrace(content, 0);
+      expect(result).toBeGreaterThan(0);
+      expect(content[result]).toBe('}');
+    });
+
+    it('should skip single-line comments with quotes', () => {
+      const content = `{
+  // This comment has "quotes" in it
+  const x = 1;
+  return x;
+}`;
+      const result = findMatchingBrace(content, 0);
+      expect(result).toBeGreaterThan(0);
+      expect(content[result]).toBe('}');
+    });
+
+    it('should skip block comments with apostrophes', () => {
+      const content = `{
+  /* We're using this value
+     and it's important */
+  const x = 1;
+  return x;
+}`;
+      const result = findMatchingBrace(content, 0);
+      expect(result).toBeGreaterThan(0);
+      expect(content[result]).toBe('}');
+    });
+
+    it('should skip block comments with quotes', () => {
+      const content = `{
+  /* The "value" should be "valid" */
+  const x = 1;
+  return x;
+}`;
+      const result = findMatchingBrace(content, 0);
+      expect(result).toBeGreaterThan(0);
+      expect(content[result]).toBe('}');
+    });
+
+    it('should handle multiple comments with apostrophes', () => {
+      const content = `{
+  // It's the first comment
+  const a = 1;
+  // Here's another one - we're good
+  const b = 2;
+  /* And here's a block comment
+     that's spanning multiple lines */
+  return a + b;
+}`;
+      const result = findMatchingBrace(content, 0);
+      expect(result).toBeGreaterThan(0);
+      expect(content[result]).toBe('}');
+    });
+
+    it('should not skip comment syntax inside strings', () => {
+      // The // inside the string should not be treated as comment start
+      const content = '{ const url = "http://example.com"; return url; }';
+      const result = findMatchingBrace(content, 0);
+      expect(result).toBeGreaterThan(0);
+      expect(content[result]).toBe('}');
+    });
+
+    it('should handle unclosed block comment gracefully', () => {
+      const content = `{
+  /* This comment never closes
+  const x = 1;
+  return x;
+}`;
+      const result = findMatchingBrace(content, 0);
+      // Should return -1 because the block comment never closes
+      expect(result).toBe(-1);
     });
   });
 
@@ -905,6 +988,349 @@ function func${i}() {
 
       // With empty mock, ratios are 0/1, so no violations
       expect(result.violations.length).toBe(0);
+    });
+  });
+
+  // ============================================================================
+  // analyzeVerbosityRatio tests
+  // ============================================================================
+
+  describe('analyzeVerbosityRatio', () => {
+    describe('basic functionality', () => {
+      it('should detect excessive inline comments (ratio > 2x)', () => {
+        const code = `
+function processData(input) {
+  // This is a very detailed comment
+  // explaining what we're about to do
+  // in excruciating detail
+  // that nobody really needs
+  // because the code is obvious
+  // but we wrote it anyway
+  const result = input.trim();
+  return result;
+}`;
+
+        const violations = analyzeVerbosityRatio(code, { maxCommentRatio: 2.0, minCodeLines: 1 });
+        expect(violations.length).toBe(1);
+        expect(violations[0].ratio).toBeGreaterThan(2.0);
+        expect(violations[0].commentLines).toBeGreaterThan(violations[0].codeLines * 2);
+      });
+
+      it('should not flag acceptable comment/code ratio', () => {
+        const code = `
+function add(a, b) {
+  // Add two numbers
+  const sum = a + b;
+  console.log('Sum:', sum);
+  return sum;
+}`;
+
+        const violations = analyzeVerbosityRatio(code, { maxCommentRatio: 2.0, minCodeLines: 1 });
+        expect(violations.length).toBe(0);
+      });
+
+      it('should skip small functions below minCodeLines', () => {
+        const code = `
+function tiny(x) {
+  // Very long comment
+  // that spans multiple lines
+  // explaining a simple return
+  return x;
+}`;
+
+        // With minCodeLines: 3, should skip 1-line function body
+        const violations = analyzeVerbosityRatio(code, { maxCommentRatio: 2.0, minCodeLines: 3 });
+        expect(violations.length).toBe(0);
+      });
+
+      it('should use default options when not provided', () => {
+        const code = `
+function foo() {
+  // Comment 1
+  // Comment 2
+  // Comment 3
+  // Comment 4
+  // Comment 5
+  // Comment 6
+  // Comment 7
+  const a = 1;
+  const b = 2;
+  return a + b;
+}`;
+
+        // Default maxCommentRatio: 2.0, minCodeLines: 3
+        // 7 comment lines / 3 code lines = 2.33 > 2.0 -> violation
+        const violations = analyzeVerbosityRatio(code);
+        expect(violations.length).toBe(1);
+      });
+    });
+
+    describe('function declaration types', () => {
+      it('should analyze regular function declarations', () => {
+        const code = `
+function regularFunc() {
+  // Comment 1
+  // Comment 2
+  // Comment 3
+  // Comment 4
+  // Comment 5
+  const x = 1;
+  return x;
+}`;
+
+        const violations = analyzeVerbosityRatio(code, { maxCommentRatio: 2.0, minCodeLines: 1 });
+        expect(violations.length).toBe(1);
+      });
+
+      it('should analyze async function declarations', () => {
+        const code = `
+async function asyncFunc() {
+  // Comment 1
+  // Comment 2
+  // Comment 3
+  // Comment 4
+  // Comment 5
+  const x = await Promise.resolve(1);
+  return x;
+}`;
+
+        const violations = analyzeVerbosityRatio(code, { maxCommentRatio: 2.0, minCodeLines: 1 });
+        expect(violations.length).toBe(1);
+      });
+
+      it('should analyze const arrow functions', () => {
+        const code = `
+const arrowFunc = () => {
+  // Comment 1
+  // Comment 2
+  // Comment 3
+  // Comment 4
+  // Comment 5
+  const x = 1;
+  return x;
+}`;
+
+        const violations = analyzeVerbosityRatio(code, { maxCommentRatio: 2.0, minCodeLines: 1 });
+        expect(violations.length).toBe(1);
+      });
+
+      it('should analyze async arrow functions', () => {
+        const code = `
+const asyncArrow = async () => {
+  // Comment 1
+  // Comment 2
+  // Comment 3
+  // Comment 4
+  // Comment 5
+  const x = await Promise.resolve(1);
+  return x;
+}`;
+
+        const violations = analyzeVerbosityRatio(code, { maxCommentRatio: 2.0, minCodeLines: 1 });
+        expect(violations.length).toBe(1);
+      });
+
+      it('should analyze exported functions', () => {
+        const code = `
+export function exportedFunc() {
+  // Comment 1
+  // Comment 2
+  // Comment 3
+  // Comment 4
+  // Comment 5
+  const x = 1;
+  return x;
+}`;
+
+        const violations = analyzeVerbosityRatio(code, { maxCommentRatio: 2.0, minCodeLines: 1 });
+        expect(violations.length).toBe(1);
+      });
+    });
+
+    describe('block comments', () => {
+      it('should count block comments', () => {
+        const code = `
+function withBlockComments() {
+  /* This is a block comment
+     that spans multiple lines
+     with extra detail */
+  const x = 1;
+  return x;
+}`;
+
+        // 3 comment lines / 2 code lines = 1.5, but should round properly
+        const violations = analyzeVerbosityRatio(code, { maxCommentRatio: 1.0, minCodeLines: 1 });
+        expect(violations.length).toBe(1);
+      });
+
+      it('should handle inline block comments', () => {
+        const code = `
+function inlineBlock() {
+  /* Single line block comment */
+  const x = 1;
+  const y = 2;
+  const z = 3;
+  return x + y + z;
+}`;
+
+        // 1 comment line / 4 code lines = 0.25 -> no violation
+        const violations = analyzeVerbosityRatio(code, { maxCommentRatio: 2.0, minCodeLines: 1 });
+        expect(violations.length).toBe(0);
+      });
+    });
+
+    describe('language detection', () => {
+      it('should detect JavaScript from .js extension', () => {
+        expect(detectCommentLanguage('file.js')).toBe('js');
+        expect(detectCommentLanguage('file.ts')).toBe('js');
+        expect(detectCommentLanguage('file.jsx')).toBe('js');
+        expect(detectCommentLanguage('file.tsx')).toBe('js');
+      });
+
+      it('should detect Python from .py extension', () => {
+        expect(detectCommentLanguage('file.py')).toBe('python');
+      });
+
+      it('should detect Rust from .rs extension', () => {
+        expect(detectCommentLanguage('file.rs')).toBe('rust');
+      });
+
+      it('should detect Go from .go extension', () => {
+        expect(detectCommentLanguage('file.go')).toBe('go');
+      });
+
+      it('should default to js for unknown extensions', () => {
+        expect(detectCommentLanguage('file.unknown')).toBe('js');
+        expect(detectCommentLanguage('')).toBe('js');
+        expect(detectCommentLanguage(null)).toBe('js');
+      });
+    });
+
+    describe('COMMENT_SYNTAX constants', () => {
+      it('should have js comment syntax', () => {
+        expect(COMMENT_SYNTAX.js.line).toBeInstanceOf(RegExp);
+        expect(COMMENT_SYNTAX.js.block.start).toBeInstanceOf(RegExp);
+        expect(COMMENT_SYNTAX.js.block.end).toBeInstanceOf(RegExp);
+      });
+
+      it('should have python comment syntax', () => {
+        expect(COMMENT_SYNTAX.python.line).toBeInstanceOf(RegExp);
+        expect(COMMENT_SYNTAX.python.block.start).toBeInstanceOf(RegExp);
+        expect(COMMENT_SYNTAX.python.block.end).toBeInstanceOf(RegExp);
+      });
+
+      it('should have rust comment syntax', () => {
+        expect(COMMENT_SYNTAX.rust.line).toBeInstanceOf(RegExp);
+      });
+
+      it('should have go comment syntax', () => {
+        expect(COMMENT_SYNTAX.go.line).toBeInstanceOf(RegExp);
+      });
+    });
+
+    describe('edge cases', () => {
+      it('should return empty array for code without functions', () => {
+        const code = `
+const x = 1;
+const y = 2;
+// Just some constants
+`;
+
+        const violations = analyzeVerbosityRatio(code);
+        expect(violations.length).toBe(0);
+      });
+
+      it('should return empty array for empty content', () => {
+        const violations = analyzeVerbosityRatio('');
+        expect(violations.length).toBe(0);
+      });
+
+      it('should handle functions with no comments', () => {
+        const code = `
+function noComments() {
+  const a = 1;
+  const b = 2;
+  const c = 3;
+  return a + b + c;
+}`;
+
+        const violations = analyzeVerbosityRatio(code);
+        expect(violations.length).toBe(0);
+      });
+
+      it('should report correct line numbers', () => {
+        const code = `// File header
+
+// More header
+
+function verboseFunc() {
+  // Comment 1
+  // Comment 2
+  // Comment 3
+  // Comment 4
+  // Comment 5
+  // Comment 6
+  // Comment 7
+  const x = 1;
+  return x;
+}`;
+
+        const violations = analyzeVerbosityRatio(code, { maxCommentRatio: 2.0, minCodeLines: 1 });
+        expect(violations.length).toBe(1);
+        expect(violations[0].line).toBe(5); // Line where function starts
+      });
+
+      it('should handle nested braces correctly', () => {
+        const code = `
+function withNestedBraces() {
+  // Comment explaining the if block
+  // More explanation here
+  // And even more detail
+  // About what this does
+  // And why we need it
+  if (true) {
+    const nested = { key: 'value' };
+    return nested;
+  }
+}`;
+
+        const violations = analyzeVerbosityRatio(code, { maxCommentRatio: 1.5, minCodeLines: 1 });
+        expect(violations.length).toBe(1);
+      });
+    });
+
+    describe('multiple functions', () => {
+      it('should analyze all functions and report multiple violations', () => {
+        const code = `
+function verbose1() {
+  // Comment 1
+  // Comment 2
+  // Comment 3
+  // Comment 4
+  // Comment 5
+  const x = 1;
+  return x;
+}
+
+function verbose2() {
+  // Another verbose function
+  // With too many comments
+  // Explaining obvious code
+  // That doesn't need it
+  // Seriously
+  const y = 2;
+  return y;
+}
+
+function acceptable() {
+  // One comment is fine
+  const z = 3;
+  return z;
+}`;
+
+        const violations = analyzeVerbosityRatio(code, { maxCommentRatio: 2.0, minCodeLines: 1 });
+        expect(violations.length).toBe(2); // verbose1 and verbose2, not acceptable
+      });
     });
   });
 });

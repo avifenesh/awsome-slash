@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Verbosity Detection** - New patterns for `/deslop-around` command to detect AI-generated verbose code
+  - `verbosity_preambles` - AI preamble phrases in comments (e.g., "Certainly!", "I'd be happy to help")
+  - `verbosity_buzzwords` - Marketing buzzwords that obscure meaning (e.g., "synergize", "paradigm shift", "game-changing")
+    - Excludes standard SE terminology like "leverage", "utilize", "orchestrate"
+  - `verbosity_hedging` - Hedging language in comments (e.g., "perhaps", "might be", "should work", "I think")
+  - `verbosity_ratio` - Multi-pass analyzer for excessive inline comments (>2:1 comment-to-code ratio)
+  - Multi-language support for comment detection (JavaScript, Python, Rust, Go)
+  - New `analyzeVerbosityRatio()` function in slop-analyzers.js
+
 - **Over-Engineering Metrics Detection** - New project-level analysis for `/deslop-around` command
   - Detects three signals of over-engineering (the #1 AI slop indicator):
     - File proliferation: >20 files per export
@@ -47,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Test files are excluded to prevent false positives
 
 ### Fixed
+- **findMatchingBrace** - Now skips comments to avoid breaking on quotes/apostrophes in comment text (e.g., "it's", "we're")
 - **Reality Check Output Size** - Condensed collector output to ~700 lines/~4.5k tokens (was thousands of lines)
   - Issue/PR bodies replaced with 200-char snippets (full context not needed)
   - Categorized issues store number + title (enough to understand without lookup)
