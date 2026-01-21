@@ -8,18 +8,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-
-#### Research & Planning
-- **AI Slop Research Document** - Comprehensive 1300+ line research document `docs/AI-SLOP-RESEARCH.md`
-  - Defines "AI slop" based on professional sources (GitHub issues, slop detection tools)
-  - Documents 10 categories of slop patterns (over-engineering, phantom references, buzzword inflation, etc.)
-  - Extracts 46 detection patterns from sloppylint across 4 axes (Noise, Quality, Style, Structural)
-  - Provides zero-dependency implementations and detection approaches
-  - Multi-language support: TypeScript, Rust, Python, Go, Java
-  - Prioritized roadmap: 7 tasks across 3 priority levels for enhancing `/deslop-around`
-  - Implementation status tracking with release strategy (ship v2.7.0 after all priorities complete)
-
-#### Slop Detection Enhancements
 - **Doc/Code Ratio Detection** - New `doc_code_ratio_js` pattern flags JSDoc blocks that are disproportionately longer than the functions they document (threshold: 3x function length)
   - Uses multi-pass analysis to compute actual doc/code ratio
   - Skips tiny functions (< 3 lines) to avoid false positives
