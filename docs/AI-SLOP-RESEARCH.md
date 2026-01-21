@@ -742,98 +742,200 @@ let validated_email = normalize_email(&raw_input);
 
 ## Automation Approaches (No Line-by-Line Agent Review)
 
-The goal is **fast, automated detection** without expensive LLM calls. Research reveals several proven approaches:
+The goal is **fast, automated detection** without expensive LLM calls or heavy dependencies.
 
-### Approach 1: Metrics-Based Detection
+### Dependency Considerations
 
-Calculate ratios and thresholds using fast static analysis tools.
+Most static analysis tools (escomplex, jscpd, madge) are MIT-licensed but pull heavy dependency trees (AST parsers, lodash, etc.). For a lightweight plugin:
 
-| Metric | Tool/Method | Threshold | Detects |
-|--------|-------------|-----------|---------|
-| **LDR (Logic Density Ratio)** | `cloc`/`sloc` | < 0.3 = bloat | Documentation inflation |
-| **Cyclomatic Complexity** | `escomplex` | > 10 per function | Over-engineering |
-| **Halstead Difficulty** | `escomplex` | High difficulty + low volume | Unnecessary complexity |
-| **Maintainability Index** | `escomplex` | < 20 = problematic | Code health |
-| **Lines per Feature** | File count / feature count | > 500:1 | Over-engineering |
-| **File Proliferation** | `find` + count | > 10x features | Over-engineering |
+| Approach | Recommendation |
+|----------|----------------|
+| **Zero-dep implementations** | Regex-based line counting, pattern matching |
+| **Shell out to CLI** | User installs tools separately (optional) |
+| **TypeScript compiler API** | Already available in TS projects |
 
-**Tools**:
-- `cloc` / `sloc` / `tokei` - Fast line counting (code vs comments vs blanks)
-- `escomplex` - JS/TS complexity metrics (cyclomatic, Halstead, maintainability)
-- Custom scripts - Ratio calculations
+**Avoid**: cloc (GPL v2 license), heavy AST libraries as direct deps.
 
-### Approach 2: AST-Based Pattern Detection
-
-Parse code into Abstract Syntax Tree, traverse to find patterns. No LLM needed.
+### Approach 1: Zero-Dep Line Counting & Ratios
 
 ```typescript
-// Using ts-morph for TypeScript
-import { Project } from 'ts-morph';
+// Zero dependencies - pure regex
+function countLines(content: string, lang: 'ts' | 'js' | 'rust'): LineStats {
+  const lines = content.split('\n');
 
-const project = new Project();
-project.addSourceFilesAtPaths('src/**/*.ts');
+  let code = 0, comments = 0, blank = 0;
+  let inBlockComment = false;
 
-for (const file of project.getSourceFiles()) {
-  for (const fn of file.getFunctions()) {
-    // Detect placeholder functions
-    const body = fn.getBody()?.getText() || '';
-    if (body.match(/throw new Error\(['"].*(?:TODO|implement)/i)) {
-      console.log(`Placeholder: ${file.getFilePath()}:${fn.getStartLineNumber()}`);
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (!trimmed) { blank++; continue; }
+
+    // Block comments
+    if (lang === 'rust') {
+      if (trimmed.startsWith('/*')) inBlockComment = true;
+      if (inBlockComment) { comments++; if (trimmed.endsWith('*/')) inBlockComment = false; continue; }
+      if (trimmed.startsWith('//')) { comments++; continue; }
+    } else {
+      if (trimmed.startsWith('/*')) inBlockComment = true;
+      if (inBlockComment) { comments++; if (trimmed.includes('*/')) inBlockComment = false; continue; }
+      if (trimmed.startsWith('//')) { comments++; continue; }
     }
 
-    // Detect stub returns
-    const statements = fn.getStatements();
-    if (statements.length === 1) {
-      const text = statements[0].getText();
-      if (text.match(/^return\s+(0|true|false|null|\[\]|\{\})$/)) {
-        console.log(`Stub return: ${file.getFilePath()}:${fn.getStartLineNumber()}`);
-      }
-    }
+    code++;
   }
+
+  return { code, comments, blank, total: lines.length };
+}
+
+// Logic Density Ratio
+function calculateLDR(stats: LineStats): number {
+  return stats.comments > 0 ? stats.code / stats.comments : Infinity;
 }
 ```
 
-**Tools**:
-- `ts-morph` - TypeScript AST manipulation (wraps TS compiler API)
-- `tree-sitter` - Fast incremental parsing, multi-language
-- `@babel/parser` - JavaScript/JSX AST parsing
+| Metric | Threshold | Detects |
+|--------|-----------|---------|
+| **LDR** | < 0.3 = bloat, > 10 = under-documented | Documentation inflation |
+| **Comment %** | > 50% suspicious | Over-documentation |
+| **File count / features** | > 10:1 | Over-engineering |
 
-### Approach 3: Tokenization + Hashing (Duplicate Detection)
+### Approach 2: Regex-Based Placeholder Detection (Zero-Dep)
 
-**Rabin-Karp algorithm** - Used by `jscpd` for copy-paste detection.
+Skip full AST parsing - regex catches most placeholder patterns:
 
-1. Tokenize source code (normalize variable names, whitespace)
-2. Create rolling hash of token sequences
-3. Find matching hashes = duplicate code blocks
+```typescript
+// Zero dependencies - pattern matching
+const PLACEHOLDER_PATTERNS = [
+  // Throw not implemented
+  /throw\s+new\s+Error\s*\(\s*['"`].*(?:TODO|implement|not\s+impl)/i,
+  // todo!/unimplemented! in Rust
+  /\btodo!\s*\(|unimplemented!\s*\(/,
+  // Empty function bodies (JS/TS)
+  /(?:function\s+\w+|=>\s*)\s*\{\s*\}/,
+  // Stub returns
+  /return\s+(?:0|true|false|null|undefined|\[\]|\{\})\s*;?\s*$/m,
+  // Single-line TODO functions
+  /\{\s*\/\/\s*TODO[^}]*\}/i,
+];
 
-```bash
-# Run jscpd to find duplicates
-npx jscpd src/ --min-tokens 50 --reporters json
+function detectPlaceholders(content: string, filePath: string): PlaceholderMatch[] {
+  const matches: PlaceholderMatch[] = [];
+  const lines = content.split('\n');
+
+  for (let i = 0; i < lines.length; i++) {
+    for (const pattern of PLACEHOLDER_PATTERNS) {
+      if (pattern.test(lines[i])) {
+        matches.push({ file: filePath, line: i + 1, pattern: pattern.source });
+      }
+    }
+  }
+  return matches;
+}
 ```
 
-Detects: AI generating similar boilerplate in multiple places.
+**For complex AST analysis** (optional, user-installed):
+- Shell out to `tsc --diagnostics` for TypeScript projects
+- Use TypeScript compiler API directly (no extra dep in TS projects)
 
-### Approach 4: Dependency Graph Analysis
+### Approach 3: Simple Duplicate Detection (Zero-Dep)
 
-Detect over-engineering through module structure.
+Simplified Rabin-Karp - hash normalized line sequences:
 
-```bash
-# Using madge for circular dependency detection
-npx madge --circular src/
+```typescript
+// Zero dependencies - simple duplicate detection
+function normalizeCode(line: string): string {
+  return line
+    .replace(/['"`][^'"`]*['"`]/g, 'STR')  // Normalize strings
+    .replace(/\b\d+\b/g, 'NUM')             // Normalize numbers
+    .replace(/\s+/g, ' ')                   // Normalize whitespace
+    .trim();
+}
 
-# Using dependency-cruiser for rule-based validation
-npx depcruise --validate .dependency-cruiser.js src/
+function findDuplicates(files: Map<string, string>, minLines = 5): Duplicate[] {
+  const hashMap = new Map<string, { file: string; start: number }[]>();
+  const duplicates: Duplicate[] = [];
+
+  for (const [filePath, content] of files) {
+    const lines = content.split('\n').map(normalizeCode);
+
+    // Create sliding window hashes
+    for (let i = 0; i <= lines.length - minLines; i++) {
+      const block = lines.slice(i, i + minLines).join('\n');
+      const hash = simpleHash(block);
+
+      if (!hashMap.has(hash)) {
+        hashMap.set(hash, []);
+      }
+      hashMap.get(hash)!.push({ file: filePath, start: i + 1 });
+    }
+  }
+
+  // Find duplicates (same hash, different locations)
+  for (const [hash, locations] of hashMap) {
+    if (locations.length > 1) {
+      duplicates.push({ hash, locations });
+    }
+  }
+  return duplicates;
+}
+
+function simpleHash(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+  }
+  return hash.toString(16);
+}
 ```
 
-**Detects**:
-- Circular dependencies (architectural smell)
-- Orphaned modules (unused code)
-- Dev dependencies in production code
-- Module depth > threshold (over-abstraction)
+**For heavy-duty duplicate detection**: Shell out to `jscpd` (user installs separately).
 
-**Tools**:
-- `madge` - Dependency graphs, circular detection, visualization
-- `dependency-cruiser` - Rule-based dependency validation
+### Approach 4: Simple Import Analysis (Zero-Dep)
+
+Extract imports with regex, build basic dependency map:
+
+```typescript
+// Zero dependencies - import extraction
+const IMPORT_PATTERNS = {
+  ts: /import\s+(?:(?:\{[^}]*\}|\*\s+as\s+\w+|\w+)\s+from\s+)?['"]([^'"]+)['"]/g,
+  rust: /use\s+((?:crate|super|self)?(?:::\w+)+)/g,
+};
+
+function extractImports(content: string, lang: 'ts' | 'rust'): string[] {
+  const imports: string[] = [];
+  const pattern = IMPORT_PATTERNS[lang];
+  let match;
+
+  while ((match = pattern.exec(content)) !== null) {
+    imports.push(match[1]);
+  }
+  return imports;
+}
+
+function analyzeImportDepth(files: Map<string, string[]>): DepthAnalysis {
+  // Count how deep import chains go
+  const depths = new Map<string, number>();
+
+  for (const [file, imports] of files) {
+    const localImports = imports.filter(i => i.startsWith('.') || i.startsWith('@/'));
+    depths.set(file, localImports.length);
+  }
+
+  const avgDepth = [...depths.values()].reduce((a, b) => a + b, 0) / depths.size;
+  const maxDepth = Math.max(...depths.values());
+
+  return { avgDepth, maxDepth, fileCount: files.size };
+}
+```
+
+| Metric | Threshold | Indicates |
+|--------|-----------|-----------|
+| Avg imports/file | > 15 | High coupling |
+| Max imports in single file | > 30 | God module |
+| Files with 0 importers | Many | Orphaned code |
+
+**For full dependency graphs**: Shell out to `madge` (user installs separately).
 
 ### Approach 5: Regex Pattern Matching (Text Slop)
 
@@ -904,55 +1006,54 @@ function detectGenericNames(file: SourceFile): GenericNameWarning[] {
 }
 ```
 
-### Recommended Architecture
+### Recommended Architecture (Zero-Dep Core)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    SLOP DETECTION PIPELINE                  │
+│              SLOP DETECTION PIPELINE (Zero-Dep)             │
 ├─────────────────────────────────────────────────────────────┤
-│  FAST LAYER (milliseconds, no LLM)                          │
+│  BUILT-IN (zero dependencies, pure JS/TS)                   │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
-│  │ Line Count  │ │ Complexity  │ │ Dependency  │            │
-│  │ cloc/tokei  │ │ escomplex   │ │ madge       │            │
+│  │ Line Count  │ │ Placeholder │ │ Text Slop   │            │
+│  │ (regex)     │ │ Detection   │ │ Patterns    │            │
+│  └──────┬──────┘ └──────┬──────┘ └──────┬──────┘            │
+│         │               │               │                    │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
+│  │ Import      │ │ Duplicate   │ │ Generic     │            │
+│  │ Analysis    │ │ Detection   │ │ Naming      │            │
 │  └──────┬──────┘ └──────┬──────┘ └──────┬──────┘            │
 │         │               │               │                    │
 │         └───────────────┼───────────────┘                    │
 │                         ▼                                    │
 │              ┌─────────────────────┐                         │
-│              │   Metrics Report    │                         │
-│              │   (JSON output)     │                         │
-│              └──────────┬──────────┘                         │
-├─────────────────────────┼───────────────────────────────────┤
-│  PATTERN LAYER (fast, no LLM)                               │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
-│  │ AST Scan    │ │ Regex Scan  │ │ Duplicate   │            │
-│  │ ts-morph    │ │ comments    │ │ jscpd       │            │
-│  └──────┬──────┘ └──────┬──────┘ └──────┬──────┘            │
-│         │               │               │                    │
-│         └───────────────┼───────────────┘                    │
-│                         ▼                                    │
-│              ┌─────────────────────┐                         │
-│              │   Pattern Matches   │                         │
+│              │   Slop Report       │                         │
 │              │   (file:line:issue) │                         │
 │              └──────────┬──────────┘                         │
 ├─────────────────────────┼───────────────────────────────────┤
-│  OPTIONAL: SEMANTIC LAYER (only if needed)                  │
+│  OPTIONAL: CLI TOOLS (user installs separately)             │
 │                         ▼                                    │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
+│  │ jscpd       │ │ madge       │ │ escomplex   │            │
+│  │ (duplicates)│ │ (deps)      │ │ (complexity)│            │
+│  └─────────────┘ └─────────────┘ └─────────────┘            │
+│  Shell out if available, skip gracefully if not             │
+├─────────────────────────────────────────────────────────────┤
+│  OPTIONAL: LLM (only when needed)                           │
 │              ┌─────────────────────┐                         │
-│              │   LLM Analysis      │   ← Only for complex    │
-│              │   (buzzword claims  │     cases that require  │
-│              │    vs evidence)     │     semantic reasoning  │
+│              │   Semantic Analysis │   ← Buzzword validation │
+│              │   (expensive)       │     Claim vs evidence   │
 │              └─────────────────────┘                         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Key Principle: Layered Detection
+### Key Principles
 
-1. **Layer 1 (Fast Metrics)**: Run `cloc`, `escomplex`, `madge` - get numbers in milliseconds
-2. **Layer 2 (Pattern Matching)**: AST traversal, regex on comments - still fast
-3. **Layer 3 (Optional LLM)**: Only for complex semantic analysis (e.g., "does this claim match the code?")
+1. **Zero-dep core**: Built-in detection runs with no npm dependencies
+2. **Optional enhancement**: Shell out to CLI tools if user has them installed
+3. **Graceful degradation**: Missing tools = skip that check, don't fail
+4. **LLM-last**: Only use tokens for semantic analysis that regex can't handle
 
-**Token cost**: Layer 1-2 = zero tokens. Layer 3 = only when metrics trigger concern.
+**Dependency cost**: Zero required. Optional tools = user's choice.
 
 ---
 
