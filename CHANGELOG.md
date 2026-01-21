@@ -71,7 +71,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - All patterns have severity `high` and autoFix `flag` (requires manual review)
   - Test files are excluded to prevent false positives
 
-- **Infrastructure-Without-Implementation Detection** - New pattern for `/deslop-around` command (#105)
+- **Infrastructure-Without-Implementation Detection** - New pattern for detecting unused infrastructure components (#105)
   - Detects infrastructure components that are configured but never used
   - Supports JavaScript, Python, Go, and Rust
   - Identifies unused database clients, cache connections, API clients, queue connections, event emitters
@@ -79,7 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Excludes exported/module.exports patterns (intentional infrastructure setup files)
   - Severity `high`, autoFix `flag` (requires manual review)
   - New `analyzeInfrastructureWithoutImplementation()` function in slop-analyzers.js
-  - Comprehensive test suite with 600+ test cases
+  - Focused test suite covering key scenarios and edge cases
 
 ### Fixed
 - **findMatchingBrace** - Now skips comments to avoid breaking on quotes/apostrophes in comment text (e.g., "it's", "we're")

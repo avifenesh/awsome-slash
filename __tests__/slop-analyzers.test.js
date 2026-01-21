@@ -2546,7 +2546,7 @@ describe('Redis tests', () => {
         expect(INSTANTIATION_PATTERNS).toHaveProperty('rust');
 
         // Each language should have an array of regex patterns
-        for (const [lang, patterns] of Object.entries(INSTANTIATION_PATTERNS)) {
+        for (const patterns of Object.values(INSTANTIATION_PATTERNS)) {
           expect(Array.isArray(patterns)).toBe(true);
           expect(patterns.length).toBeGreaterThan(0);
           for (const pattern of patterns) {
