@@ -1803,6 +1803,52 @@ describe('slop-patterns', () => {
     });
   });
 
+  describe('buzzword_inflation pattern', () => {
+    it('should exist with correct metadata', () => {
+      expect(slopPatterns).toHaveProperty('buzzword_inflation');
+      const pattern = slopPatterns.buzzword_inflation;
+
+      expect(pattern.severity).toBe('high');
+      expect(pattern.autoFix).toBe('flag');
+      expect(pattern.language).toBeNull();
+      expect(pattern.description).toContain('claim');
+    });
+
+    it('should have null pattern (requires analyzer)', () => {
+      expect(slopPatterns.buzzword_inflation.pattern).toBeNull();
+    });
+
+    it('should have requiresMultiPass set to true', () => {
+      expect(slopPatterns.buzzword_inflation.requiresMultiPass).toBe(true);
+    });
+
+    it('should have minEvidenceMatches configuration', () => {
+      const pattern = slopPatterns.buzzword_inflation;
+      expect(pattern.minEvidenceMatches).toBe(2);
+    });
+
+    it('should be included in getMultiPassPatterns', () => {
+      const multiPassPatterns = getMultiPassPatterns();
+      expect(multiPassPatterns).toHaveProperty('buzzword_inflation');
+      expect(multiPassPatterns.buzzword_inflation.requiresMultiPass).toBe(true);
+    });
+
+    it('should be included in universal patterns (language: null)', () => {
+      const universalPatterns = getUniversalPatterns();
+      expect(universalPatterns).toHaveProperty('buzzword_inflation');
+    });
+
+    it('should be included in high severity patterns', () => {
+      const highPatterns = getPatternsBySeverity('high');
+      expect(highPatterns).toHaveProperty('buzzword_inflation');
+    });
+
+    it('should be included in flag autoFix patterns', () => {
+      const flagPatterns = getPatternsByAutoFix('flag');
+      expect(flagPatterns).toHaveProperty('buzzword_inflation');
+    });
+  });
+
   describe('getMultiPassPatterns', () => {
     it('should return only patterns with requiresMultiPass: true', () => {
       const multiPassPatterns = getMultiPassPatterns();
@@ -1824,6 +1870,12 @@ describe('slop-patterns', () => {
       const multiPassPatterns = getMultiPassPatterns();
 
       expect(multiPassPatterns).toHaveProperty('over_engineering_metrics');
+    });
+
+    it('should include buzzword_inflation pattern', () => {
+      const multiPassPatterns = getMultiPassPatterns();
+
+      expect(multiPassPatterns).toHaveProperty('buzzword_inflation');
     });
   });
 

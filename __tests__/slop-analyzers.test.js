@@ -1428,8 +1428,8 @@ function acceptable() {
           expect(claims[0].isPositiveClaim).toBe(true);
         });
 
-        it('should mark "with enterprise-grade" as positive claim', () => {
-          const content = 'Built with enterprise-grade security.';
+        it('should mark "offers enterprise-grade" as positive claim', () => {
+          const content = 'This offers enterprise-grade security.';
           const claims = extractClaims(content, 'README.md');
 
           expect(claims[0].isPositiveClaim).toBe(true);
