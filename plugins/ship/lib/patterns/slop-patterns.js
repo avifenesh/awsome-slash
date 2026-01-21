@@ -191,6 +191,135 @@ const slopPatterns = {
     description: 'Placeholder text that should be replaced'
   },
 
+  // ============================================================================
+  // Placeholder Function Detection (#98)
+  // Detects compilable but non-functional placeholder code that linters miss
+  // ============================================================================
+
+  /**
+   * JavaScript/TypeScript: Stub return values
+   * Detects functions returning hardcoded 0, true, false, null, undefined, [], {}
+   */
+  placeholder_stub_returns_js: {
+    pattern: /return\s+(?:0|true|false|null|undefined|\[\]|\{\})\s*;?\s*$/m,
+    exclude: ['*.test.*', '*.spec.*', '*.config.*'],
+    severity: 'high',
+    autoFix: 'flag',
+    language: 'javascript',
+    description: 'Stub return value (0, true, false, null, undefined, [], {})'
+  },
+
+  /**
+   * JavaScript/TypeScript: throw Error("TODO/not implemented")
+   */
+  placeholder_not_implemented_js: {
+    pattern: /throw\s+new\s+Error\s*\(\s*['"`].*(?:TODO|implement|not\s+impl)/i,
+    exclude: ['*.test.*', '*.spec.*'],
+    severity: 'high',
+    autoFix: 'flag',
+    language: 'javascript',
+    description: 'throw new Error("TODO: implement...") placeholder'
+  },
+
+  /**
+   * JavaScript/TypeScript: Empty function bodies
+   */
+  placeholder_empty_function_js: {
+    pattern: /(?:function\s+\w+\s*\([^)]*\)|=>\s*)\s*\{\s*\}/,
+    exclude: ['*.test.*', '*.spec.*', '*.d.ts'],
+    severity: 'high',
+    autoFix: 'flag',
+    language: 'javascript',
+    description: 'Empty function body (placeholder)'
+  },
+
+  /**
+   * Rust: todo!() and unimplemented!() macros
+   */
+  placeholder_todo_rust: {
+    pattern: /\b(?:todo|unimplemented)!\s*\(/,
+    exclude: ['*_test.rs', '*_tests.rs', '**/tests/**'],
+    severity: 'high',
+    autoFix: 'flag',
+    language: 'rust',
+    description: 'Rust todo!() or unimplemented!() macro'
+  },
+
+  /**
+   * Rust: panic!("TODO: ...") placeholder
+   */
+  placeholder_panic_todo_rust: {
+    pattern: /\bpanic!\s*\(\s*["'].*(?:TODO|implement)/i,
+    exclude: ['*_test.rs', '*_tests.rs', '**/tests/**'],
+    severity: 'high',
+    autoFix: 'flag',
+    language: 'rust',
+    description: 'Rust panic!("TODO: ...") placeholder'
+  },
+
+  /**
+   * Python: raise NotImplementedError
+   */
+  placeholder_not_implemented_py: {
+    pattern: /raise\s+NotImplementedError/,
+    exclude: ['test_*.py', '*_test.py', 'conftest.py', '**/tests/**'],
+    severity: 'high',
+    autoFix: 'flag',
+    language: 'python',
+    description: 'Python raise NotImplementedError placeholder'
+  },
+
+  /**
+   * Python: Function with only pass statement
+   * Matches both single-line (def foo(): pass) and multi-line formats
+   */
+  placeholder_pass_only_py: {
+    pattern: /def\s+\w+\s*\([^)]*\)\s*:\s*(?:pass|\n\s+pass)\s*$/m,
+    exclude: ['test_*.py', '*_test.py', 'conftest.py'],
+    severity: 'high',
+    autoFix: 'flag',
+    language: 'python',
+    description: 'Python function with only pass statement'
+  },
+
+  /**
+   * Python: Function with only ellipsis (...)
+   * Matches both single-line (def foo(): ...) and multi-line formats
+   * Note: .pyi stub files legitimately use ellipsis, so excluded
+   */
+  placeholder_ellipsis_py: {
+    pattern: /def\s+\w+\s*\([^)]*\)\s*:\s*(?:\.\.\.|\n\s+\.\.\.)\s*$/m,
+    exclude: ['*.pyi', 'test_*.py', '*_test.py'],
+    severity: 'high',
+    autoFix: 'flag',
+    language: 'python',
+    description: 'Python function with only ellipsis (...)'
+  },
+
+  /**
+   * Go: panic("TODO: ...") placeholder
+   */
+  placeholder_panic_go: {
+    pattern: /panic\s*\(\s*["'].*(?:TODO|implement|not\s+impl)/i,
+    exclude: ['*_test.go', '**/testdata/**'],
+    severity: 'high',
+    autoFix: 'flag',
+    language: 'go',
+    description: 'Go panic("TODO: ...") placeholder'
+  },
+
+  /**
+   * Java: throw new UnsupportedOperationException()
+   */
+  placeholder_unsupported_java: {
+    pattern: /throw\s+new\s+UnsupportedOperationException\s*\(/,
+    exclude: ['*Test.java', '**/test/**'],
+    severity: 'high',
+    autoFix: 'flag',
+    language: 'java',
+    description: 'Java throw new UnsupportedOperationException() placeholder'
+  },
+
   /**
    * Empty catch blocks (JavaScript/TypeScript)
    */
@@ -448,6 +577,119 @@ const slopPatterns = {
     autoFix: 'flag',
     language: null,
     description: 'Hardcoded URLs that should be configuration'
+  },
+
+  // ============================================================================
+  // Doc/Code Ratio Detection (#P1-T2)
+  // Detects JSDoc blocks that are disproportionately longer than function bodies
+  // ============================================================================
+
+  /**
+   * JSDoc-to-function ratio (excessive documentation)
+   * Flags when JSDoc is >3x the length of the function body
+   * Requires multi-pass analysis since simple regex can't compute ratios
+   */
+  doc_code_ratio_js: {
+    pattern: null, // Requires multi-pass analysis
+    exclude: ['*.test.*', '*.spec.*', '*.d.ts'],
+    severity: 'medium',
+    autoFix: 'flag',
+    language: 'javascript',
+    description: 'Documentation longer than code (JSDoc > 3x function body)',
+    requiresMultiPass: true,
+    minFunctionLines: 3,  // Skip tiny functions
+    maxRatio: 3.0          // Doc can be 3x function length max
+  },
+
+  // ============================================================================
+  // Phantom Reference Detection (#P1-T3)
+  // Detects issue/PR mentions and file path references in code comments
+  // ============================================================================
+
+  /**
+   * Issue/PR/iteration references in code comments
+   * ANY mention of issue/PR numbers is treated as slop - context belongs in commits
+   */
+  issue_pr_references: {
+    pattern: /\/\/.*(?:#\d+|issue\s+#?\d+|PR\s+#?\d+|pull\s+request\s+#?\d+|fixed\s+in\s+#?\d+|closes?\s+#?\d+|resolves?\s+#?\d+|iteration\s+\d+)/i,
+    exclude: ['*.md', 'README.*', 'CHANGELOG.*', 'CONTRIBUTING.*'],
+    severity: 'medium',
+    autoFix: 'remove',
+    language: null,  // Universal - all languages
+    description: 'Issue/PR/iteration references in comments (slop - remove context from code)'
+  },
+
+  /**
+   * File path references in code comments
+   * References like "see auth-flow.md" may become outdated
+   */
+  file_path_references: {
+    pattern: /\/\/.*(?:see|refer\s+to|in|per|documented\s+in)\s+([a-zA-Z0-9_\-./]+\.(?:md|js|ts|json|yaml|yml|toml|txt))/i,
+    exclude: ['*.md', 'README.*', '*.test.*', '*.spec.*'],
+    severity: 'low',
+    autoFix: 'flag',
+    language: null,
+    description: 'File path references in comments that may be outdated'
+  },
+
+  // ============================================================================
+  // Generic Naming Detection
+  // Detects overly generic variable names that reduce code clarity
+  // ============================================================================
+
+  /**
+   * JavaScript/TypeScript: Generic variable names
+   * Detects variables named data, result, item, temp, value, etc.
+   * Excludes: loop iteration variables, destructured variables
+   * Note: Using 'i' flag only (not 'g') to avoid stateful regex issues in tests
+   */
+  generic_naming_js: {
+    pattern: /\b(?:const|let|var)\s+(data|result|item|temp|value|output|response|obj|ret|res|val|arr|str|num|buf|ctx|cfg|opts|args|params)\s*[=:]/i,
+    exclude: ['*.test.*', '*.spec.*', '**/test/**', '**/tests/**'],
+    severity: 'low',
+    autoFix: 'flag',
+    language: 'javascript',
+    description: 'Generic variable name that could be more descriptive (e.g., "data" -> "userData")'
+  },
+
+  /**
+   * Python: Generic variable names
+   * Detects assignment to generic names (excludes for-in loop variables)
+   * Uses multiline flag for ^ anchor to work per-line
+   */
+  generic_naming_py: {
+    pattern: /^(\s*)(?!.*\bfor\s+\w+\s+in\b)(data|result|item|temp|value|output|response|obj|ret|res|val|arr|ctx|cfg|opts|args|params)\s*[:=]/im,
+    exclude: ['*test*.py', '**/test_*.py', '**/tests/**', 'conftest.py'],
+    severity: 'low',
+    autoFix: 'flag',
+    language: 'python',
+    description: 'Generic variable name that could be more descriptive'
+  },
+
+  /**
+   * Rust: Generic variable names
+   * Detects let/let mut with generic names
+   */
+  generic_naming_rust: {
+    pattern: /\blet\s+(?:mut\s+)?(data|result|item|temp|value|output|response|obj|ret|res|val|buf|ctx|cfg|opts|args)\s*[=:]/i,
+    exclude: ['*_test.rs', '*_tests.rs', '**/tests/**'],
+    severity: 'low',
+    autoFix: 'flag',
+    language: 'rust',
+    description: 'Generic variable name that could be more descriptive'
+  },
+
+  /**
+   * Go: Generic variable names
+   * Detects short declaration with generic names
+   */
+  generic_naming_go: {
+    pattern: /\b(?:var\s+)?(data|result|item|temp|value|output|response|obj|ret|res|val|buf|ctx|cfg|opts|args)\s*:=/i,
+    exclude: ['*_test.go', '**/tests/**', '**/testdata/**'],
+    severity: 'low',
+    autoFix: 'flag',
+    language: 'go',
+    description: 'Generic variable name that could be more descriptive'
   }
 };
 
@@ -663,6 +905,24 @@ function isFileExcluded(filePath, excludePatterns) {
   return result;
 }
 
+/**
+ * Get patterns that require multi-pass analysis
+ * These patterns have `requiresMultiPass: true` and need structural code analysis
+ * @returns {Object} Patterns requiring multi-pass analysis
+ */
+function getMultiPassPatterns() {
+  const result = {};
+  for (const [name, pattern] of Object.entries(slopPatterns)) {
+    if (pattern.requiresMultiPass) {
+      result[name] = pattern;
+    }
+  }
+  return result;
+}
+
+// Import analyzers for multi-pass patterns
+const analyzers = require('./slop-analyzers');
+
 module.exports = {
   slopPatterns,
   // Pre-indexed lookup functions (O(1) performance)
@@ -677,5 +937,8 @@ module.exports = {
   getAvailableSeverities,
   hasLanguage,
   // File exclusion
-  isFileExcluded
+  isFileExcluded,
+  // Multi-pass analysis
+  getMultiPassPatterns,
+  analyzers
 };
