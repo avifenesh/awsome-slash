@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Generic Naming Detection** - New patterns for `/deslop-around` command to flag overly generic variable names
+  - JavaScript/TypeScript: `const/let/var data`, `result`, `item`, `temp`, `value`, `response`, etc.
+  - Python: Generic assignments (excludes for-in loop variables)
+  - Rust: `let`/`let mut` with generic names
+  - Go: Short declarations (`:=`) with generic names
+  - Severity `low` (advisory), autoFix `flag` (requires semantic understanding to rename)
+  - Test files excluded to prevent false positives
 - **Doc/Code Ratio Detection** - New `doc_code_ratio_js` pattern flags JSDoc blocks that are disproportionately longer than the functions they document (threshold: 3x function length)
   - Uses multi-pass analysis to compute actual doc/code ratio
   - Skips tiny functions (< 3 lines) to avoid false positives

@@ -88,6 +88,7 @@ Detect and remove:
 - **Placeholder Functions**: `return 0`, `todo!()`, `raise NotImplementedError`, `throw Error("TODO")`
 - **Excessive Documentation**: JSDoc >3x function body length
 - **Phantom References**: Issue/PR mentions, file path references in comments
+- **Generic Naming**: Variables named `data`, `result`, `item`, `temp`, `value` (suggests more specific names)
 
 Reference patterns from `${CLAUDE_PLUGIN_ROOT}/lib/patterns/slop-patterns.js`
 

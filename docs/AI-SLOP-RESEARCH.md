@@ -746,11 +746,11 @@ let validated_email = normalize_email(&raw_input);
 
 ### Priority 2: Medium Effort (Medium, High Impact) - ⏳ PENDING
 
-4. **Generic Naming Detection** ⏳ TODO
-   - Flag excessive use of: data, result, item, temp, value, output
-   - Suggest more specific names
-   - **Difficulty**: Medium (regex + heuristics)
-   - **Impact**: Medium (improves code clarity)
+~~4. **Generic Naming Detection**~~ ✅ **DONE** (Committed, not released)
+   - Patterns: `generic_naming_js`, `generic_naming_py`, `generic_naming_rust`, `generic_naming_go`
+   - Flags: data, result, item, temp, value, output, response, obj, ret, res, val, arr, str, num, buf, ctx, cfg, opts, args, params
+   - Python pattern excludes for-in loop variables to reduce false positives
+   - **Status**: Comprehensive regex tests with ReDoS protection
 
 5. **Verbosity Detection** ⏳ TODO
    - Comment-to-code ratio per function
