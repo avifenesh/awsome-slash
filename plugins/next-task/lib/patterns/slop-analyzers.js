@@ -422,19 +422,21 @@ function isTestFile(filePath) {
 }
 
 /**
- * Count source files in directory (recursive, excludes tests/vendor)
+ * Count source files in directory (recursive, excludes tests/vendor by default)
  *
  * @param {string} repoPath - Repository root path
  * @param {Object} options - Options
  * @param {Function} options.readdir - Directory reader (for testing)
  * @param {Function} options.stat - Stat function (for testing)
  * @param {number} options.maxFiles - Maximum files to count (default 10000)
+ * @param {boolean} options.includeTests - Include test files (default false)
  * @returns {Object} { count, files[] }
  */
 function countSourceFiles(repoPath, options = {}) {
   const fs = options.fs || require('fs');
   const path = options.path || require('path');
   const maxFiles = options.maxFiles || 10000;
+  const includeTests = options.includeTests || false;
 
   const files = [];
   let count = 0;
@@ -465,7 +467,7 @@ function countSourceFiles(repoPath, options = {}) {
       } else if (entry.isFile()) {
         const ext = path.extname(entry.name);
 
-        if (allExts.includes(ext) && !isTestFile(relativePath)) {
+        if (allExts.includes(ext) && (includeTests || !isTestFile(relativePath))) {
           files.push(relativePath);
           count++;
         }
@@ -756,10 +758,673 @@ function analyzeOverEngineering(repoPath, options = {}) {
   };
 }
 
+// ============================================================================
+// Infrastructure Without Implementation Detection
+// Detects infrastructure components that are set up but never used
+// ============================================================================
+
+/**
+ * Common infrastructure component suffixes that indicate setup/configuration
+ * These naming patterns typically indicate infrastructure components
+ */
+const INFRASTRUCTURE_SUFFIXES = [
+  'Client', 'Connection', 'Pool', 'Service', 'Provider',
+  'Manager', 'Factory', 'Repository', 'Gateway', 'Adapter',
+  'Handler', 'Broker', 'Queue', 'Cache', 'Store',
+  'Transport', 'Channel', 'Socket', 'Server', 'Database'
+];
+
+// Pattern for detecting overly generic variable names to skip
+const GENERIC_VAR_PATTERN = /^[ijkxy]$/;
+
+/**
+ * Common setup/initialization verbs that indicate infrastructure creation
+ */
+const SETUP_VERBS = [
+  'create', 'connect', 'init', 'initialize', 'setup',
+  'configure', 'establish', 'open', 'start', 'new',
+  'build', 'make', 'construct', 'instantiate', 'spawn'
+];
+
+/**
+ * Language-specific patterns for instantiation/initialization
+ * These patterns detect when infrastructure components are created
+ */
+const INSTANTIATION_PATTERNS = {
+  js: [
+    // new Class() instantiation
+    /(?:const|let|var)\s+(\w+)\s*=\s*new\s+(\w+(?:Client|Connection|Pool|Service|Provider|Manager|Factory|Repository|Gateway|Adapter|Handler|Broker|Queue|Cache|Store|Transport|Channel|Socket|Server|Database))/g,
+    // Factory/builder pattern: createXxx(), Xxx.create()
+    /(?:const|let|var)\s+(\w+)\s*=\s*(?:await\s+)?(?:create|connect|init|initialize|setup)(\w+)/gi,
+    // Method call pattern: thing.connect(), thing.initialize()
+    /(?:const|let|var)\s+(\w+)\s*=\s*(?:await\s+)?\w+\.(?:create|connect|init|initialize|setup|open|start)\(/gi
+  ],
+  python: [
+    // Class instantiation: client = SomeClient()
+    /^(\w+)\s*=\s*(\w+(?:Client|Connection|Pool|Service|Provider|Manager|Factory|Repository|Gateway|Adapter|Handler|Broker|Queue|Cache|Store|Transport|Channel|Socket|Server|Database))\(/gm,
+    // Factory pattern: client = create_client()
+    /^(\w+)\s*=\s*(?:create|connect|init|initialize|setup)_(\w+)\(/gm,
+    // Async patterns: client = await create_client()
+    /^(\w+)\s*=\s*await\s+(?:create|connect|init|initialize|setup)_(\w+)\(/gm
+  ],
+  go: [
+    // New* function pattern: client := NewClient()
+    /(\w+)\s*:=\s*(?:New|Create|Connect|Init|Setup)(\w+)\(/g,
+    // Variable declaration: var client = NewClient()
+    /var\s+(\w+)\s+.*=\s*(?:New|Create|Connect|Init|Setup)(\w+)\(/g,
+    // Struct literal with suffix: client := &RedisClient{}
+    /(\w+)\s*:=\s*&(\w+(?:Client|Connection|Pool|Service|Provider|Manager|Factory|Repository|Gateway|Adapter|Handler|Broker|Queue|Cache|Store|Transport|Channel|Socket|Server|Database))\{/g
+  ],
+  rust: [
+    // ::new() constructor: let client = Client::new()
+    /let\s+(?:mut\s+)?(\w+)\s*=\s*(\w+(?:Client|Connection|Pool|Service|Provider|Manager|Factory|Repository|Gateway|Adapter|Handler|Broker|Queue|Cache|Store|Transport|Channel|Socket|Server|Database))::(?:new|create|connect|init|build)\(/g,
+    // Builder pattern: let client = ClientBuilder::new().build()
+    /let\s+(?:mut\s+)?(\w+)\s*=\s*(\w+Builder)::new\(\).*\.build\(\)/g,
+    // From/into patterns: let client = Client::from()
+    /let\s+(?:mut\s+)?(\w+)\s*=\s*(\w+(?:Client|Connection|Pool|Service|Provider|Manager|Factory|Repository|Gateway|Adapter|Handler|Broker|Queue|Cache|Store|Transport|Channel|Socket|Server|Database))::from/g
+  ]
+};
+
+// ============================================================================
+// Buzzword Inflation Detection
+// Detects quality claims in docs/comments without supporting code evidence
+// ============================================================================
+
+/**
+ * Default buzzword categories and their associated terms
+ */
+const BUZZWORD_CATEGORIES = {
+  production: ['production-ready', 'production-grade', 'prod-ready'],
+  enterprise: ['enterprise-grade', 'enterprise-ready', 'enterprise-class'],
+  security: ['secure', 'secure by default', 'security-focused'],
+  scale: ['scalable', 'high-performance', 'performant', 'highly scalable'],
+  reliability: ['battle-tested', 'robust', 'reliable', 'rock-solid'],
+  completeness: ['comprehensive', 'complete', 'full-featured', 'feature-complete']
+};
+
+/**
+ * Evidence patterns per buzzword category
+ * Each category maps to evidence types, each with array of regex patterns
+ */
+const EVIDENCE_PATTERNS = {
+  production: {
+    tests: [/\.test\.[jt]sx?$|\.spec\.[jt]sx?$|__tests__|test_.*\.py$|_test\.go$|_test\.rs$/],
+    errorHandling: [/try\s*\{|catch\s*\(|\.catch\s*\(|except\s*:|if\s+let\s+Err|match.*Err\(/],
+    logging: [/logger\.|\.log\s*\(|console\.error|tracing::|slog\.|log\.(info|warn|error|debug)/i]
+  },
+  enterprise: {
+    auth: [/authenticat|authorization|permission|rbac|acl|role/i],
+    audit: [/audit|track.*event|event.*log|activity.*log/i],
+    rateLimit: [/rate.?limit|throttle|limiter/i]
+  },
+  security: {
+    validation: [/validat|sanitiz|escape|clean|htmlspecialchars/i],
+    auth: [/\bauth\b|token|jwt|session|login|passport/i],
+    encryption: [/encrypt|decrypt|hash|bcrypt|argon|crypto\./i]
+  },
+  scale: {
+    async: [/async\s+|await\s+|Promise|Future|tokio|async_std|goroutine/],
+    cache: [/\bcache\b|redis|memcache|lru/i],
+    pool: [/pool|connection.?pool|thread.?pool/i]
+  },
+  reliability: {
+    tests: [/\.test\.[jt]sx?$|\.spec\.[jt]sx?$|__tests__|test_.*\.py$|_test\.go$|_test\.rs$/],
+    coverage: [/coverage|lcov|nyc|istanbul|codecov/i],
+    errorHandling: [/try\s*\{|catch\s*\(|\.catch\s*\(|except\s*:|if\s+let\s+Err/]
+  },
+  completeness: {
+    edgeCases: [/edge.?case|boundary|corner.?case/i],
+    errorHandling: [/\b(handle|handles|handled|handling)\s+(all\s+)?(errors?|exceptions?|failures?)\b/i],
+    documentation: [/\/\*\*|\/\/\/|"""|'''/]
+  }
+};
+
+/**
+ * Patterns indicating a positive claim (not TODO/aspirational)
+ */
+const CLAIM_INDICATORS = [
+  /\bis\s+/i,           // "is secure"
+  /\bare\s+/i,          // "are production-ready"
+  /\bprovides?\s+/i,    // "provides secure"
+  /\boffers?\s+/i,      // "offers robust"
+  /\bfeatures?\s+/i,    // "features comprehensive"
+  /\bfully\s+/i,        // "fully production-ready"
+  /\b100%\s+/i,         // "100% secure"
+  /\bdesigned\s+(for|to\s+be)\s+/i  // "designed for security"
+];
+
+/**
+ * Patterns indicating NOT a claim (aspirational/TODO)
+ */
+const NOT_CLAIM_INDICATORS = [
+  /\bTODO\b/i,
+  /\bFIXME\b/i,
+  /\bshould\s+be\b/i,
+  /\bwill\s+be\b/i,
+  /\bmake\s+(?:it\s+(?:more|less|better)|this\b)/i,
+  /\bneed(s)?\s+to\s+be\b/i,
+  /\bplan(ning)?\s+to\b/i,
+  /\bwant(s)?\s+to\b/i
+];
+
+/**
+ * Escape regex special characters in a string
+ * @param {string} str - String to escape
+ * @returns {string} Escaped string safe for regex
+ */
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Extract buzzword claims from file content
+ *
+ * @param {string} content - File content
+ * @param {string} filePath - Path to file (for reporting)
+ * @param {Object} buzzwordCategories - Buzzword category mappings
+ * @returns {Array<Object>} Array of claims with line, buzzword, category, isPositiveClaim
+ */
+function extractClaims(content, filePath, buzzwordCategories = BUZZWORD_CATEGORIES) {
+  const claims = [];
+  const lines = content.split('\n');
+
+  // Build single regex from all buzzwords and reverse map for category lookup
+  const allBuzzwords = [];
+  const buzzwordToCategory = new Map();
+  for (const [category, buzzwords] of Object.entries(buzzwordCategories)) {
+    for (const buzzword of buzzwords) {
+      allBuzzwords.push(escapeRegex(buzzword));
+      buzzwordToCategory.set(buzzword.toLowerCase(), { category, buzzword });
+    }
+  }
+  const combinedRegex = new RegExp(`\\b(${allBuzzwords.join('|')})\\b`, 'gi');
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Find all buzzword matches in this line
+    const matches = [...line.matchAll(combinedRegex)];
+    if (matches.length === 0) continue;
+
+    // Check claim indicators once per line (only if matches found)
+    const hasNotClaimIndicator = NOT_CLAIM_INDICATORS.some(p => p.test(line));
+    const hasClaimIndicator = CLAIM_INDICATORS.some(p => p.test(line));
+    const isPositiveClaim = hasClaimIndicator && !hasNotClaimIndicator;
+
+    for (const match of matches) {
+      const matchedText = match[1].toLowerCase();
+      const mapping = buzzwordToCategory.get(matchedText);
+      if (!mapping) continue;
+
+      claims.push({
+        line: i + 1,
+        column: match.index,
+        buzzword: mapping.buzzword,
+        category: mapping.category,
+        text: line.trim(),
+        isPositiveClaim,
+        filePath
+      });
+    }
+  }
+
+  return claims;
+}
+
+/**
+ * Find files that may contain claims (docs, READMEs, code with comments)
+ *
+ * @param {string} repoPath - Repository root path
+ * @param {Object} options - Options with fs/path overrides
+ * @returns {Array<string>} Array of relative file paths
+ */
+function findClaimSourceFiles(repoPath, options = {}) {
+  const fs = options.fs || require('fs');
+  const path = options.path || require('path');
+
+  const files = [];
+  const docPatterns = [
+    /README/i,
+    /\.md$/,
+    /docs?\//i,
+    /\.rst$/,
+    /CHANGELOG/i,
+    /\.[jt]sx?$/,  // JS/TS files (JSDoc comments)
+    /\.py$/,       // Python (docstrings)
+    /\.rs$/,       // Rust (doc comments)
+    /\.go$/        // Go (doc comments)
+  ];
+
+  function walk(dir, depth = 0) {
+    if (depth > 5) return; // Limit depth
+    if (files.length > 500) return; // Limit file count
+
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return; // Skip unreadable directories
+    }
+
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      const relativePath = path.relative(repoPath, fullPath);
+
+      if (shouldExclude(relativePath)) continue;
+
+      if (entry.isDirectory()) {
+        walk(fullPath, depth + 1);
+      } else if (entry.isFile()) {
+        if (docPatterns.some(p => p.test(relativePath))) {
+          files.push(relativePath);
+        }
+      }
+    }
+  }
+
+  walk(repoPath);
+  return files;
+}
+
+/**
+ * Check if a regex pattern is for matching file paths (vs file content)
+ * File path patterns typically match file extensions or test directory structures
+ *
+ * @param {RegExp} regex - The pattern to check
+ * @returns {boolean} True if this is a file path pattern
+ */
+function isFilePathPattern(regex) {
+  const source = regex.source;
+  // File path patterns match file extensions or test directories
+  return (
+    source.includes('\\.[jt]sx?$') ||  // .js, .ts, .jsx, .tsx
+    source.includes('\\.py$') ||        // .py
+    source.includes('\\.go$') ||        // .go
+    source.includes('\\.rs$') ||        // .rs
+    source.includes('__tests__') ||     // Jest test directory
+    source.includes('_test\\.') ||      // Go/Rust test files
+    source.includes('test_.*\\.') ||    // Python test files
+    source.includes('\\.spec\\.')       // Spec files
+  );
+}
+
+/**
+ * Search for evidence supporting a buzzword category
+ *
+ * @param {string} repoPath - Repository root path
+ * @param {string} category - Buzzword category to search evidence for
+ * @param {Object} evidencePatterns - Evidence patterns mapping
+ * @param {Array<string>} filesToSearch - Files to search
+ * @param {Object} options - Options with fs/path overrides
+ * @returns {Object} Evidence results: { found[], total, categories{} }
+ */
+function searchEvidence(repoPath, category, evidencePatterns, filesToSearch, options = {}) {
+  const fs = options.fs || require('fs');
+  const path = options.path || require('path');
+
+  const evidence = {
+    found: [],
+    total: 0,
+    categories: {}
+  };
+
+  // Get evidence patterns for this category
+  const patterns = evidencePatterns[category];
+  if (!patterns) return evidence;
+
+  // Separate path patterns from content patterns for efficiency
+  const pathPatterns = [];
+  const contentPatterns = [];
+  for (const [evidenceType, regexes] of Object.entries(patterns)) {
+    for (const regex of regexes) {
+      if (isFilePathPattern(regex)) {
+        pathPatterns.push({ evidenceType, regex });
+      } else {
+        contentPatterns.push({ evidenceType, regex });
+      }
+    }
+  }
+
+  for (const file of filesToSearch) {
+    // Check path patterns first (no file read needed)
+    for (const { evidenceType, regex } of pathPatterns) {
+      if (regex.test(file)) {
+        if (!evidence.categories[evidenceType]) {
+          evidence.categories[evidenceType] = [];
+        }
+        if (!evidence.categories[evidenceType].includes(file)) {
+          evidence.categories[evidenceType].push(file);
+          evidence.total++;
+        }
+      }
+    }
+
+    // Only read content if there are content patterns to check
+    if (contentPatterns.length > 0) {
+      let content;
+      try {
+        const fullPath = path.isAbsolute(file) ? file : path.join(repoPath, file);
+        content = fs.readFileSync(fullPath, 'utf8');
+      } catch {
+        continue; // Skip unreadable files
+      }
+
+      for (const { evidenceType, regex } of contentPatterns) {
+        if (regex.test(content)) {
+          if (!evidence.categories[evidenceType]) {
+            evidence.categories[evidenceType] = [];
+          }
+          if (!evidence.categories[evidenceType].includes(file)) {
+            evidence.categories[evidenceType].push(file);
+            evidence.total++;
+          }
+        }
+      }
+    }
+  }
+
+  evidence.found = Object.keys(evidence.categories);
+  return evidence;
+}
+
+/**
+ * Detect gaps between claims and evidence
+ *
+ * @param {Array<Object>} claims - Extracted claims
+ * @param {string} repoPath - Repository root path
+ * @param {Object} evidencePatterns - Evidence patterns
+ * @param {number} minEvidenceMatches - Minimum evidence required
+ * @param {Array<string>} filesToSearch - Files to search for evidence
+ * @param {Object} options - Options
+ * @returns {Array<Object>} Violations
+ */
+function detectGaps(claims, repoPath, evidencePatterns, minEvidenceMatches, filesToSearch, options = {}) {
+  const violations = [];
+
+  // Cache evidence searches per category (avoid re-searching)
+  const evidenceCache = new Map();
+
+  for (const claim of claims) {
+    // Skip non-positive claims (TODOs, aspirational)
+    if (!claim.isPositiveClaim) continue;
+
+    // Check cache first
+    let evidence = evidenceCache.get(claim.category);
+    if (!evidence) {
+      evidence = searchEvidence(
+        repoPath,
+        claim.category,
+        evidencePatterns,
+        filesToSearch,
+        options
+      );
+      evidenceCache.set(claim.category, evidence);
+    }
+
+    // Check if sufficient evidence exists
+    if (evidence.total < minEvidenceMatches) {
+      violations.push({
+        type: 'buzzword_inflation',
+        file: claim.filePath,
+        line: claim.line,
+        buzzword: claim.buzzword,
+        category: claim.category,
+        claim: claim.text,
+        evidenceFound: evidence.found,
+        evidenceCount: evidence.total,
+        evidenceRequired: minEvidenceMatches,
+        severity: evidence.total === 0 ? 'high' : 'medium',
+        message: `Claim "${claim.buzzword}" without sufficient evidence (found ${evidence.total}/${minEvidenceMatches} required)`
+      });
+    }
+  }
+
+  return violations;
+}
+
+/**
+ * Analyze buzzword inflation - quality claims without supporting code evidence
+ *
+ * Detects claims like "production-ready", "secure", "scalable" in documentation
+ * and comments, then searches for supporting evidence in the codebase.
+ * Flags claims that lack sufficient evidence.
+ *
+ * @param {string} repoPath - Repository root path
+ * @param {Object} options - Analysis options
+ * @param {Object} [options.buzzwordCategories] - Buzzword category mappings
+ * @param {Object} [options.evidencePatterns] - Evidence patterns per category
+ * @param {number} [options.minEvidenceMatches=2] - Minimum evidence matches required
+ * @returns {Object} Analysis results with violations
+ */
+function analyzeBuzzwordInflation(repoPath, options = {}) {
+  const fs = options.fs || require('fs');
+  const path = options.path || require('path');
+
+  const buzzwordCategories = options.buzzwordCategories || BUZZWORD_CATEGORIES;
+  const evidencePatterns = options.evidencePatterns || EVIDENCE_PATTERNS;
+  const minEvidenceMatches = options.minEvidenceMatches || 2;
+
+  // Find files that may contain claims
+  const claimSourceFiles = findClaimSourceFiles(repoPath, options);
+
+  // Find all source files for evidence searching (include tests - they're evidence)
+  const { files: sourceFiles } = countSourceFiles(repoPath, { ...options, includeTests: true });
+
+  // Extract all claims from claim source files
+  const allClaims = [];
+  for (const file of claimSourceFiles) {
+    let content;
+    try {
+      content = fs.readFileSync(path.join(repoPath, file), 'utf8');
+    } catch {
+      continue; // Skip unreadable files
+    }
+
+    const claims = extractClaims(content, file, buzzwordCategories);
+    allClaims.push(...claims);
+  }
+
+  // Detect gaps (claims without evidence)
+  const violations = detectGaps(
+    allClaims,
+    repoPath,
+    evidencePatterns,
+    minEvidenceMatches,
+    sourceFiles,
+    options
+  );
+
+  return {
+    claimsFound: allClaims.length,
+    positiveClaimsFound: allClaims.filter(c => c.isPositiveClaim).length,
+    violations,
+    verdict: violations.length > 0
+      ? (violations.some(v => v.severity === 'high') ? 'HIGH' : 'MEDIUM')
+      : 'OK'
+  };
+}
+
+/**
+ * Analyze infrastructure without implementation - setup without usage
+ *
+ * Detects infrastructure components (clients, connections, pools, services) that are
+ * instantiated/configured but never actually used anywhere in the codebase.
+ * This pattern often indicates dead code or incomplete implementations.
+ *
+ * @param {string} rootPath - Repository root path
+ * @param {Object} options - Analysis options
+ * @param {Array} [options.infrastructureSuffixes] - Component suffixes to detect
+ * @param {Array} [options.setupVerbs] - Setup verbs to detect
+ * @param {Object} [options.instantiationPatterns] - Language-specific patterns
+ * @returns {Object} Analysis results: { setupsFound, usagesFound, violations, verdict }
+ */
+function analyzeInfrastructureWithoutImplementation(rootPath, options = {}) {
+  const fs = options.fs || require('fs');
+  const path = options.path || require('path');
+
+  const infrastructureSuffixes = options.infrastructureSuffixes || INFRASTRUCTURE_SUFFIXES;
+  const setupVerbs = options.setupVerbs || SETUP_VERBS;
+  const instantiationPatterns = options.instantiationPatterns || INSTANTIATION_PATTERNS;
+
+  // Collect all source files (excluding tests by default)
+  const { files: sourceFiles } = countSourceFiles(rootPath, {
+    ...options,
+    includeTests: false,
+    maxFiles: 1000
+  });
+
+  // Track infrastructure setups and their usage
+  const infrastructureSetups = new Map(); // varName -> { file, line, type, component }
+  const infrastructureUsage = new Map();  // varName -> { count, files[] }
+
+  // Phase 1: Find all infrastructure setups
+  for (const file of sourceFiles) {
+    if (shouldExclude(file) || isTestFile(file)) continue;
+
+    let content;
+    try {
+      content = fs.readFileSync(path.join(rootPath, file), 'utf8');
+    } catch (err) {
+      // Skip unreadable files (permissions, binary, etc.)
+      // This is expected for some files in the repository
+      continue;
+    }
+
+    const lang = detectLanguage(file);
+    const patterns = instantiationPatterns[lang] || instantiationPatterns.js;
+
+    for (const pattern of patterns) {
+      // Reset regex state
+      const regex = new RegExp(pattern.source, pattern.flags);
+      let match;
+      let matchCount = 0;
+      const MAX_MATCHES_PER_FILE = 100; // Safety limit to prevent DoS
+
+      while ((match = regex.exec(content)) !== null && matchCount < MAX_MATCHES_PER_FILE) {
+        matchCount++;
+        const varName = match[1];
+        const componentType = match[2] || 'Infrastructure';
+
+        // Skip if variable name is too generic (e.g., 'x', 'i', 'tmp')
+        if (varName.length < 2 || GENERIC_VAR_PATTERN.test(varName)) continue;
+
+        const lineNumber = countNewlines(content.substring(0, match.index)) + 1;
+
+        // Store the setup location
+        const key = `${file}:${varName}`;
+        infrastructureSetups.set(key, {
+          file,
+          line: lineNumber,
+          varName,
+          type: componentType,
+          content: content.split('\n')[lineNumber - 1].trim()
+        });
+
+        // Initialize usage tracking
+        if (!infrastructureUsage.has(key)) {
+          infrastructureUsage.set(key, { count: 0, files: [] });
+        }
+      }
+    }
+  }
+
+  // Phase 2: Search for usage of each setup variable
+  for (const [key, setup] of infrastructureSetups.entries()) {
+    const { varName, file: setupFile } = setup;
+
+    // Pre-compile usage patterns once per variable for performance
+    const escapedVarName = escapeRegex(varName);
+    const usagePatterns = [
+      new RegExp(`\\b${escapedVarName}\\s*\\.\\w+`, 'g'),  // varName.method()
+      new RegExp(`\\b${escapedVarName}\\s*\\[`, 'g'),      // varName[prop]
+      new RegExp(`\\(.*\\b${escapedVarName}\\b.*\\)`, 'g'), // func(varName)
+      new RegExp(`\\b${escapedVarName}\\s*\\)`, 'g'),      // func(arg, varName)
+      new RegExp(`return\\s+.*\\b${escapedVarName}\\b`, 'g') // return varName
+    ];
+
+    // Search for usage in all source files
+    for (const file of sourceFiles) {
+      if (shouldExclude(file) || isTestFile(file)) continue;
+
+      let content;
+      try {
+        content = fs.readFileSync(path.join(rootPath, file), 'utf8');
+      } catch (err) {
+        // Skip unreadable files in usage search phase
+        // Files may have been deleted/moved between phases
+        continue;
+      }
+
+      // Split into lines for line-by-line analysis
+      const lines = content.split('\n');
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+
+        // Skip the setup line itself
+        if (file === setupFile && i === setup.line - 1) continue;
+
+        // Look for usage patterns (method calls, property access, passed as argument)
+        // Using word boundaries to avoid false positives
+        for (const pattern of usagePatterns) {
+          if (pattern.test(line)) {
+            const usage = infrastructureUsage.get(key);
+            usage.count++;
+            if (!usage.files.includes(file)) {
+              usage.files.push(file);
+            }
+            break; // Count once per line
+          }
+        }
+      }
+    }
+  }
+
+  // Phase 3: Detect violations (setups without usage)
+  const violations = [];
+  for (const [key, setup] of infrastructureSetups.entries()) {
+    const usage = infrastructureUsage.get(key);
+
+    if (usage.count === 0) {
+      // Check for false positives - might be exported or used in a way we didn't detect
+      const setupContent = setup.content.toLowerCase();
+
+      // Skip if it's likely exported or part of a module.exports
+      if (setupContent.includes('export') || setupContent.includes('module.exports')) {
+        continue;
+      }
+
+      // Skip if it's a parameter or destructured assignment
+      if (setupContent.includes('function') && setupContent.includes(setup.varName)) {
+        continue;
+      }
+
+      violations.push({
+        file: setup.file,
+        line: setup.line,
+        varName: setup.varName,
+        type: setup.type,
+        content: setup.content,
+        severity: 'low',
+        message: `Infrastructure component "${setup.varName}" (${setup.type}) is created but never used`
+      });
+    }
+  }
+
+  return {
+    setupsFound: infrastructureSetups.size,
+    usagesFound: Array.from(infrastructureUsage.values()).filter(u => u.count > 0).length,
+    violations,
+    verdict: violations.length > 0 ? 'LOW' : 'OK'
+  };
+}
+
 module.exports = {
   analyzeDocCodeRatio,
   analyzeVerbosityRatio,
   analyzeOverEngineering,
+  analyzeBuzzwordInflation,
+  analyzeInfrastructureWithoutImplementation,
   // Export helpers for testing
   findMatchingBrace,
   countNonEmptyLines,
@@ -772,10 +1437,27 @@ module.exports = {
   detectCommentLanguage,
   shouldExclude,
   isTestFile,
+  // Buzzword inflation helpers (for testing)
+  extractClaims,
+  searchEvidence,
+  detectGaps,
+  findClaimSourceFiles,
+  escapeRegex,
+  isFilePathPattern,
   // Export constants for testing
   ENTRY_POINTS,
   EXPORT_PATTERNS,
   SOURCE_EXTENSIONS,
   EXCLUDE_DIRS,
-  COMMENT_SYNTAX
+  COMMENT_SYNTAX,
+  // Buzzword inflation constants
+  BUZZWORD_CATEGORIES,
+  EVIDENCE_PATTERNS,
+  CLAIM_INDICATORS,
+  NOT_CLAIM_INDICATORS,
+  // Infrastructure detection constants
+  INFRASTRUCTURE_SUFFIXES,
+  SETUP_VERBS,
+  INSTANTIATION_PATTERNS,
+  GENERIC_VAR_PATTERN
 };

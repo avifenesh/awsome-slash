@@ -759,6 +759,45 @@ const slopPatterns = {
     fileRatioThreshold: 20,       // Max 20 files per export
     linesPerExportThreshold: 500, // Max 500 lines per export
     depthThreshold: 4             // Max 4 directory levels
+  },
+
+  // ============================================================================
+  // Buzzword Inflation Detection
+  // Detects quality claims without supporting code evidence
+  // ============================================================================
+
+  /**
+   * Buzzword inflation (project-level analysis)
+   * Detects claims like "production-ready", "secure", "scalable" in docs/comments
+   * without supporting evidence in the codebase
+   * Requires multi-pass analysis - extracts claims, searches for evidence
+   */
+  buzzword_inflation: {
+    pattern: null, // Requires multi-pass analysis
+    exclude: [],   // Exclusions handled by analyzer (isTestFile, shouldExclude)
+    severity: 'high',
+    autoFix: 'flag',  // Cannot auto-fix documentation claims
+    language: null,   // Universal - all languages
+    description: 'Quality claims (production-ready, secure, scalable) without supporting code evidence',
+    requiresMultiPass: true,
+    // Minimum evidence matches required to substantiate a claim
+    minEvidenceMatches: 2
+  },
+
+  /**
+   * Infrastructure without implementation (multi-pass analysis)
+   * Detects infrastructure components (clients, connections, pools, services)
+   * that are instantiated/configured but never actually used
+   * Requires multi-pass - scans for setup patterns, then verifies usage
+   */
+  infrastructure_without_implementation: {
+    pattern: null, // Requires multi-pass analysis
+    exclude: ['node_modules', 'vendor', 'dist', 'build', '*.test.*', '*.spec.*'],
+    severity: 'low',
+    autoFix: 'flag',  // Cannot safely remove - may be lazy loading or future use
+    language: null,   // Universal - all languages
+    description: 'Infrastructure configured but never wired (setup without usage)',
+    requiresMultiPass: true
   }
 };
 
