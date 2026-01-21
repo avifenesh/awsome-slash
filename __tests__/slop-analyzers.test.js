@@ -1757,11 +1757,11 @@ function acceptable() {
     });
 
     describe('analyzeBuzzwordInflation (integration)', () => {
-      it('should return correct structure', () => {
-        const fs = require('fs');
-        const path = require('path');
-        const os = require('os');
+      const fs = require('fs');
+      const path = require('path');
+      const os = require('os');
 
+      it('should return correct structure', () => {
         // Create temp directory with test files
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'buzzword-test-'));
 
@@ -1792,10 +1792,6 @@ function acceptable() {
       });
 
       it('should detect violations in real test scenario', () => {
-        const fs = require('fs');
-        const path = require('path');
-        const os = require('os');
-
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'buzzword-test-'));
 
         try {
@@ -1822,10 +1818,6 @@ function acceptable() {
       });
 
       it('should NOT flag claims with sufficient evidence', () => {
-        const fs = require('fs');
-        const path = require('path');
-        const os = require('os');
-
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'buzzword-test-'));
 
         try {
@@ -1860,10 +1852,6 @@ try {
       });
 
       it('should use default options when not provided', () => {
-        const fs = require('fs');
-        const path = require('path');
-        const os = require('os');
-
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'buzzword-test-'));
 
         try {
