@@ -740,103 +740,388 @@ let validated_email = normalize_email(&raw_input);
 
 ---
 
-## Automation Approaches (No Line-by-Line Agent Review)
+## Detection Pipeline Architecture
 
-The goal is **fast, automated detection** without expensive LLM calls or heavy dependencies.
+### Flow Overview
 
-### Dependency Considerations
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    SLOP DETECTION PIPELINE                       │
+├──────────────────────────────────────────────────────────────────┤
+│  PHASE 1: Built-in Detection (zero-dep, pure JS)                 │
+│  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐     │
+│  │ Metrics    │ │ Patterns   │ │ Text Slop  │ │ Structure  │     │
+│  │ (LDR, LOC) │ │ (46 rules) │ │ (phrases)  │ │ (imports)  │     │
+│  └─────┬──────┘ └─────┬──────┘ └─────┬──────┘ └─────┬──────┘     │
+│        └──────────────┴──────────────┴──────────────┘            │
+│                              ▼                                    │
+│                 ┌─────────────────────────┐                       │
+│                 │  Certainty-Tagged Report │                      │
+│                 │  • HIGH: definite issues │                      │
+│                 │  • MEDIUM: likely issues │                      │
+│                 │  • LOW: hot areas/hints  │                      │
+│                 └───────────┬─────────────┘                       │
+├─────────────────────────────┼────────────────────────────────────┤
+│  PHASE 2: Optional CLI Enhancement                               │
+│                             ▼                                     │
+│  ┌────────────┐ ┌────────────┐ ┌────────────┐                    │
+│  │ jscpd      │ │ madge      │ │ escomplex  │  ← If installed    │
+│  └─────┬──────┘ └─────┬──────┘ └─────┬──────┘                    │
+│        └──────────────┴──────────────┘                           │
+│                       ▼                                           │
+│         ┌─────────────────────────┐                               │
+│         │  Enhanced Metrics       │                               │
+│         │  (complexity, deps)     │                               │
+│         └───────────┬─────────────┘                               │
+├─────────────────────┼────────────────────────────────────────────┤
+│  PHASE 3: LLM Analysis (Required)                                │
+│                     ▼                                             │
+│  ┌──────────────────────────────────────────────────────────┐    │
+│  │  Agent receives:                                          │    │
+│  │  • Certainty-tagged findings                              │    │
+│  │  • Hot areas without certainty                            │    │
+│  │  • Thoroughness level (quick/normal/deep)                 │    │
+│  │                                                           │    │
+│  │  Agent completes:                                         │    │
+│  │  • Validates uncertain findings                           │    │
+│  │  • Semantic analysis (buzzword claims vs evidence)        │    │
+│  │  • Context-aware judgment (is this REALLY slop?)          │    │
+│  │  • Scopes to what automated tools can't catch             │    │
+│  └──────────────────────────────────────────────────────────┘    │
+└──────────────────────────────────────────────────────────────────┘
+```
 
-Most static analysis tools (escomplex, jscpd, madge) are MIT-licensed but pull heavy dependency trees (AST parsers, lodash, etc.). For a lightweight plugin:
+### Thoroughness Levels
 
-| Approach | Recommendation |
-|----------|----------------|
-| **Zero-dep implementations** | Regex-based line counting, pattern matching |
-| **Shell out to CLI** | User installs tools separately (optional) |
-| **TypeScript compiler API** | Already available in TS projects |
+| Level | Built-in | CLI Tools | LLM Scope |
+|-------|----------|-----------|-----------|
+| **quick** | All patterns | Skip | HIGH certainty only |
+| **normal** | All patterns | If available | HIGH + MEDIUM + sample LOW |
+| **deep** | All patterns | If available | All findings + full semantic analysis |
 
-**Avoid**: cloc (GPL v2 license), heavy AST libraries as direct deps.
+---
 
-### Approach 1: Zero-Dep Line Counting & Ratios
+## Extracted Detection Patterns (From Research)
 
+### Sloppylint: 46 Patterns Across 4 Axes
+
+**Axis 1: Noise (10 patterns)**
 ```typescript
-// Zero dependencies - pure regex
-function countLines(content: string, lang: 'ts' | 'js' | 'rust'): LineStats {
-  const lines = content.split('\n');
+const NOISE_PATTERNS = {
+  redundantComments: /\/\/\s*(increment|decrement|set|get|return)\s+(the\s+)?\w+/i,
+  emptyDocstrings: /\/\*\*\s*\*\//,
+  genericDescriptions: /\/\/\s*(this|the)\s+(function|method|class)\s+(does|is|handles)/i,
+  debugStatements: /console\.(log|debug|info|warn|trace)\s*\(/,
+  breakpoints: /debugger\s*;/,
+  commentedCodeBlocks: /\/\/\s*(const|let|var|function|if|for|while|return)\s+/,
+  excessiveLogging: null, // Requires counting - flag if >5 log statements per function
+  unnecessaryPass: /\{\s*\}/, // Empty blocks
+  obviousTypeAnnotations: /:\s*(string|number|boolean)\s*=\s*(['"`]|[0-9]|true|false)/,
+  changelogInSource: /\*\s*(v?\d+\.\d+|changelog|version\s+history)/i,
+};
+```
 
-  let code = 0, comments = 0, blank = 0;
-  let inBlockComment = false;
+**Axis 2: Quality/Hallucinations (14 patterns)**
+```typescript
+const QUALITY_PATTERNS = {
+  // Placeholder patterns
+  todoFixme: /\/\/\s*(TODO|FIXME|HACK|XXX|BUG):/i,
+  notImplemented: /throw\s+new\s+Error\s*\(\s*['"`].*not\s+impl/i,
+  ellipsisPlaceholder: /\.\.\./,  // In function bodies
+  returnNonePlaceholder: /return\s+(null|undefined|None)\s*;?\s*\/\//, // with comment
 
-  for (const line of lines) {
-    const trimmed = line.trim();
+  // Stub returns (HIGH certainty)
+  stubReturns: /return\s+(0|true|false|\[\]|\{\}|''|"")\s*;?\s*$/,
 
-    if (!trimmed) { blank++; continue; }
+  // Magic values
+  magicNumbers: /[^a-zA-Z_]([2-9]\d{2,}|[1-9]\d{3,})[^a-zA-Z_0-9]/, // Numbers > 100
+  magicStrings: /['"`][a-zA-Z0-9_\-]{20,}['"`]/, // Long unexplained strings
 
-    // Block comments
-    if (lang === 'rust') {
-      if (trimmed.startsWith('/*')) inBlockComment = true;
-      if (inBlockComment) { comments++; if (trimmed.endsWith('*/')) inBlockComment = false; continue; }
-      if (trimmed.startsWith('//')) { comments++; continue; }
-    } else {
-      if (trimmed.startsWith('/*')) inBlockComment = true;
-      if (inBlockComment) { comments++; if (trimmed.includes('*/')) inBlockComment = false; continue; }
-      if (trimmed.startsWith('//')) { comments++; continue; }
-    }
+  // Assumption comments
+  assumptionComments: /\/\/\s*(assuming|assume|should\s+be|probably|i\s+think)/i,
 
-    code++;
-  }
+  // Mutable defaults (JS)
+  mutableDefaults: /=\s*\[\]|\{\}\s*\)/, // Default params with [] or {}
 
-  return { code, comments, blank, total: lines.length };
-}
+  // Impossible conditions
+  impossibleConditions: /if\s*\(\s*(true|false|1|0)\s*\)/,
+};
+```
 
-// Logic Density Ratio
-function calculateLDR(stats: LineStats): number {
-  return stats.comments > 0 ? stats.code / stats.comments : Infinity;
+**Axis 3: Style (10 patterns)**
+```typescript
+const STYLE_PATTERNS = {
+  // Overconfident language
+  overconfident: /\/\/\s*(obviously|clearly|simply|trivially|of\s+course)/i,
+
+  // Hedging phrases
+  hedging: /\/\/\s*(might|maybe|perhaps|possibly|could\s+be|should\s+work)/i,
+
+  // Apologetic tone
+  apologetic: /\/\/\s*(sorry|apolog|unfortunately|i\s+tried)/i,
+
+  // Bombastic verbs
+  bombastic: /\b(leverage|utilize|facilitate|orchestrate|synergize|streamline)\b/i,
+
+  // AI preambles (in comments)
+  aiPreambles: /\/\/\s*(certainly|i'd\s+be\s+happy|great\s+question|absolutely)/i,
+
+  // Function size (requires AST or line counting)
+  oversizedFunction: null, // Flag if >50 lines
+
+  // Excessive nesting
+  excessiveNesting: /^\s{16,}/, // >4 levels of indentation
+
+  // Nested ternary
+  nestedTernary: /\?[^:]+\?/,
+
+  // Single letter variables (not i,j,k,x,y,z)
+  singleLetterVars: /\b(const|let|var)\s+([a-hln-wA-HLN-W])\s*=/,
+};
+```
+
+**Axis 4: Structural (12 patterns)**
+```typescript
+const STRUCTURAL_PATTERNS = {
+  // Empty exception blocks
+  emptyExcept: /catch\s*\([^)]*\)\s*\{\s*\}/,
+
+  // Bare exception (catches everything)
+  bareExcept: /catch\s*\(\s*(e|err|error|ex)?\s*\)\s*\{/,
+
+  // Wildcard imports
+  wildcardImports: /import\s+\*\s+from/,
+
+  // Unused imports (requires tracking)
+  unusedImports: null, // Track imports vs usage
+
+  // Single-method classes
+  singleMethodClass: null, // Requires AST
+
+  // Unreachable code
+  unreachableCode: /return\s+[^;]+;\s*\n\s*[^}\s]/,
+
+  // Duplicate code blocks
+  duplicateCode: null, // Use hash-based detection
+};
+```
+
+### AI-SLOP-Detector: 6 Detection Mechanisms
+
+**1. Logic Density Ratio (LDR)**
+```typescript
+function calculateLDR(codeLines: number, docLines: number): LDRResult {
+  const ratio = docLines > 0 ? codeLines / docLines : Infinity;
+  return {
+    ratio,
+    severity: ratio < 0.3 ? 'critical' : ratio < 0.5 ? 'warning' : 'ok',
+    message: ratio < 0.3 ? 'Documentation bloat: more docs than code' : null,
+  };
 }
 ```
 
-| Metric | Threshold | Detects |
-|--------|-----------|---------|
-| **LDR** | < 0.3 = bloat, > 10 = under-documented | Documentation inflation |
-| **Comment %** | > 50% suspicious | Over-documentation |
-| **File count / features** | > 10:1 | Over-engineering |
-
-### Approach 2: Regex-Based Placeholder Detection (Zero-Dep)
-
-Skip full AST parsing - regex catches most placeholder patterns:
-
+**2. Maintainability Index (from escomplex)**
 ```typescript
-// Zero dependencies - pattern matching
-const PLACEHOLDER_PATTERNS = [
-  // Throw not implemented
-  /throw\s+new\s+Error\s*\(\s*['"`].*(?:TODO|implement|not\s+impl)/i,
-  // todo!/unimplemented! in Rust
-  /\btodo!\s*\(|unimplemented!\s*\(/,
-  // Empty function bodies (JS/TS)
-  /(?:function\s+\w+|=>\s*)\s*\{\s*\}/,
-  // Stub returns
-  /return\s+(?:0|true|false|null|undefined|\[\]|\{\})\s*;?\s*$/m,
-  // Single-line TODO functions
-  /\{\s*\/\/\s*TODO[^}]*\}/i,
+// MI = 171 - (3.42 × ln(effort)) - (0.23 × ln(cyclomatic)) - (16.2 × ln(loc))
+function calculateMaintainabilityIndex(
+  halsteadEffort: number,
+  cyclomaticComplexity: number,
+  logicalLoc: number
+): number {
+  let mi = 171
+    - (3.42 * Math.log(halsteadEffort))
+    - (0.23 * Math.log(cyclomaticComplexity))
+    - (16.2 * Math.log(logicalLoc));
+
+  // Clamp to 0-100 scale
+  mi = Math.max(0, Math.min(171, mi));
+  return (mi * 100) / 171;
+}
+```
+
+**3. Cyclomatic Complexity (increment count for each)**
+```typescript
+const COMPLEXITY_INCREMENTORS = {
+  ts: [
+    /\bif\s*\(/g,
+    /\belse\s+if\s*\(/g,
+    /\bfor\s*\(/g,
+    /\bwhile\s*\(/g,
+    /\bcase\s+/g,
+    /\bcatch\s*\(/g,
+    /\?\s*[^:]+\s*:/g,  // Ternary
+    /&&/g,
+    /\|\|/g,
+    /\?\?/g,  // Nullish coalescing
+  ],
+  rust: [
+    /\bif\s+/g,
+    /\belse\s+if\s+/g,
+    /\bfor\s+/g,
+    /\bwhile\s+/g,
+    /\bmatch\s+/g,
+    /=>\s*\{/g,  // Match arms
+    /\bcatch\b/g,
+    /&&/g,
+    /\|\|/g,
+  ],
+};
+
+function countCyclomaticComplexity(content: string, lang: 'ts' | 'rust'): number {
+  let complexity = 1; // Base complexity
+  for (const pattern of COMPLEXITY_INCREMENTORS[lang]) {
+    const matches = content.match(pattern);
+    if (matches) complexity += matches.length;
+  }
+  return complexity;
+}
+```
+
+**4. Buzzword Inflation Detection**
+```typescript
+const BUZZWORDS = [
+  'production-ready', 'enterprise-grade', 'battle-tested',
+  'scalable', 'robust', 'comprehensive', 'secure',
+  'high-performance', 'best-in-class', 'industry-standard',
 ];
 
-function detectPlaceholders(content: string, filePath: string): PlaceholderMatch[] {
-  const matches: PlaceholderMatch[] = [];
-  const lines = content.split('\n');
+const EVIDENCE_CHECKS = {
+  'production-ready': [/\.test\.|\.spec\.|__tests__/, /try\s*\{/, /logger\./],
+  'secure': [/validate|sanitize|escape/, /auth|permission/, /encrypt|hash/],
+  'scalable': [/async|await|Promise/, /cache|redis|memcache/, /queue|worker/],
+  'comprehensive': [/edge\s*case|boundary|error\s*handling/],
+};
 
-  for (let i = 0; i < lines.length; i++) {
-    for (const pattern of PLACEHOLDER_PATTERNS) {
-      if (pattern.test(lines[i])) {
-        matches.push({ file: filePath, line: i + 1, pattern: pattern.source });
+function detectBuzzwordInflation(docs: string, code: string): BuzzwordFinding[] {
+  const findings: BuzzwordFinding[] = [];
+
+  for (const word of BUZZWORDS) {
+    if (docs.toLowerCase().includes(word)) {
+      const checks = EVIDENCE_CHECKS[word] || [];
+      const evidenceFound = checks.some(pattern => pattern.test(code));
+
+      if (!evidenceFound) {
+        findings.push({
+          buzzword: word,
+          certainty: 'MEDIUM', // Agent should verify
+          message: `Claim "${word}" without supporting evidence`,
+        });
       }
     }
   }
-  return matches;
+  return findings;
 }
 ```
 
-**For complex AST analysis** (optional, user-installed):
-- Shell out to `tsc --diagnostics` for TypeScript projects
-- Use TypeScript compiler API directly (no extra dep in TS projects)
+### Vibe-Check: Over-Engineering Detection
+
+**Infrastructure-Without-Implementation**
+```typescript
+const INFRASTRUCTURE_PATTERNS = [
+  // Database setup without queries
+  { setup: /new\s+(PrismaClient|Pool|Connection)/, usage: /\.(query|find|create|update)/ },
+  // Logger setup without usage
+  { setup: /(pino|winston|bunyan)\s*\(/, usage: /\.(info|warn|error|debug)\s*\(/ },
+  // Auth setup without protection
+  { setup: /passport\.|auth0|jwt\.sign/, usage: /isAuthenticated|requireAuth|protect/ },
+];
+
+function detectInfraWithoutImpl(content: string): InfraFinding[] {
+  const findings: InfraFinding[] = [];
+
+  for (const pattern of INFRASTRUCTURE_PATTERNS) {
+    if (pattern.setup.test(content) && !pattern.usage.test(content)) {
+      findings.push({
+        type: 'infrastructure-without-implementation',
+        certainty: 'LOW', // Agent should investigate
+        message: 'Infrastructure configured but appears unused',
+      });
+    }
+  }
+  return findings;
+}
+```
+
+---
+
+## Language Support Matrix
+
+Primary support (lean toward): **TypeScript** and **Rust**
+Secondary support: JavaScript, Python, Go, Java
+
+| Detection | TS/JS | Rust | Python | Go |
+|-----------|-------|------|--------|-----|
+| Line counting | ✅ | ✅ | ✅ | ✅ |
+| Comment patterns | ✅ | ✅ | ✅ | ✅ |
+| Placeholder detection | ✅ | ✅ | ✅ | ✅ |
+| Import analysis | ✅ | ✅ | ✅ | ✅ |
+| Cyclomatic complexity | ✅ | ✅ | ⚠️ | ⚠️ |
+| Buzzword inflation | ✅ | ✅ | ✅ | ✅ |
+
+---
+
+## Multi-Language Pattern Definitions
+
+### Comment Syntax by Language
+
+```typescript
+const COMMENT_SYNTAX = {
+  ts: { line: '//', blockStart: '/*', blockEnd: '*/', docStart: '/**' },
+  js: { line: '//', blockStart: '/*', blockEnd: '*/', docStart: '/**' },
+  rust: { line: '//', blockStart: '/*', blockEnd: '*/', docStart: '///' },
+  python: { line: '#', blockStart: '"""', blockEnd: '"""', docStart: '"""' },
+  go: { line: '//', blockStart: '/*', blockEnd: '*/', docStart: '//' },
+  java: { line: '//', blockStart: '/*', blockEnd: '*/', docStart: '/**' },
+};
+```
+
+### Placeholder Patterns by Language
+
+```typescript
+const PLACEHOLDER_PATTERNS = {
+  ts: [
+    /throw\s+new\s+Error\s*\(\s*['"`].*(?:TODO|implement|not\s+impl)/i,
+    /(?:function\s+\w+|=>\s*)\s*\{\s*\}/,
+    /return\s+(?:0|true|false|null|undefined|\[\]|\{\})\s*;?\s*$/m,
+    /\{\s*\/\/\s*TODO[^}]*\}/i,
+  ],
+  rust: [
+    /\btodo!\s*\(/,
+    /\bunimplemented!\s*\(/,
+    /\bpanic!\s*\(\s*["'].*(?:TODO|implement)/i,
+    /fn\s+\w+[^{]*\{\s*\}/,  // Empty fn body
+    /=>\s*\{\s*\}/,          // Empty match arm
+  ],
+  python: [
+    /raise\s+NotImplementedError/,
+    /pass\s*$/,
+    /\.\.\.\s*$/,  // Ellipsis
+    /return\s+None\s*$/,
+    /#\s*TODO/i,
+  ],
+  go: [
+    /panic\s*\(\s*["'].*(?:TODO|implement)/i,
+    /return\s+nil\s*$/,
+    /\/\/\s*TODO/i,
+    /func\s+\w+[^{]*\{\s*\}/,  // Empty func
+  ],
+};
+```
+
+### Debug Statement Patterns
+
+```typescript
+const DEBUG_PATTERNS = {
+  ts: [/console\.(log|debug|info|warn|trace)\s*\(/, /debugger\s*;/],
+  rust: [/dbg!\s*\(/, /println!\s*\(\s*["']debug/i, /#\[cfg\(debug_assertions\)\]/],
+  python: [/print\s*\(/, /pdb\.set_trace\(\)/, /breakpoint\(\)/],
+  go: [/fmt\.Print/, /log\.Print/, /debug\./],
+};
+```
+
+---
+
+## Core Detection Functions (Zero-Dep)
 
 ### Approach 3: Simple Duplicate Detection (Zero-Dep)
 
@@ -937,123 +1222,29 @@ function analyzeImportDepth(files: Map<string, string[]>): DepthAnalysis {
 
 **For full dependency graphs**: Shell out to `madge` (user installs separately).
 
-### Approach 5: Regex Pattern Matching (Text Slop)
-
-Fast regex scan for bombastic phrases in comments.
+### Generic Naming Detection (Regex-based)
 
 ```typescript
-const SLOP_PATTERNS = [
-  /\bcertainly\b/i,
-  /\bI'd be happy to\b/i,
-  /\bgreat question\b/i,
-  /\bit's worth noting\b/i,
-  /\bgenerally speaking\b/i,
-  /\bleverage\b/i,
-  /\bfacilitate\b/i,
-  /\bdelve\b/i,
-  /\bparadigm\b/i,
-  /\bsynergy\b/i,
-];
+const GENERIC_NAMES = /\b(const|let|var)\s+(data|result|item|temp|value|output|response|obj|ret|res)\s*[=:]/gi;
 
-function scanComments(content: string): SlopMatch[] {
-  const commentPattern = /\/\/.*$|\/\*[\s\S]*?\*\//gm;
-  const matches: SlopMatch[] = [];
-
-  for (const comment of content.matchAll(commentPattern)) {
-    for (const pattern of SLOP_PATTERNS) {
-      if (pattern.test(comment[0])) {
-        matches.push({ line: getLineNumber(content, comment.index), pattern });
-      }
-    }
-  }
-  return matches;
-}
-```
-
-### Approach 6: Cross-Reference Validation
-
-Validate references in comments against actual data.
-
-```typescript
-// Extract issue/PR references from comments
-const refPattern = /#(\d+)/g;
-
-// Validate against GitHub API (batch request)
-async function validateRefs(refs: number[], repo: string): Promise<InvalidRef[]> {
-  const { data: issues } = await octokit.issues.listForRepo({ owner, repo, state: 'all' });
-  const validIds = new Set(issues.map(i => i.number));
-  return refs.filter(r => !validIds.has(r)).map(r => ({ ref: r, exists: false }));
-}
-```
-
-### Approach 7: Generic Naming Detection
-
-AST + word frequency analysis.
-
-```typescript
-const GENERIC_NAMES = new Set(['data', 'result', 'item', 'temp', 'value', 'output', 'response', 'obj']);
-
-function detectGenericNames(file: SourceFile): GenericNameWarning[] {
+function detectGenericNames(content: string, filePath: string): GenericNameWarning[] {
   const warnings: GenericNameWarning[] = [];
+  const lines = content.split('\n');
 
-  for (const decl of file.getVariableDeclarations()) {
-    const name = decl.getName();
-    if (GENERIC_NAMES.has(name.toLowerCase())) {
-      warnings.push({ name, line: decl.getStartLineNumber() });
+  for (let i = 0; i < lines.length; i++) {
+    const matches = lines[i].matchAll(GENERIC_NAMES);
+    for (const match of matches) {
+      warnings.push({
+        file: filePath,
+        line: i + 1,
+        name: match[2],
+        certainty: 'LOW', // Agent should check context
+      });
     }
   }
   return warnings;
 }
 ```
-
-### Recommended Architecture (Zero-Dep Core)
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│              SLOP DETECTION PIPELINE (Zero-Dep)             │
-├─────────────────────────────────────────────────────────────┤
-│  BUILT-IN (zero dependencies, pure JS/TS)                   │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
-│  │ Line Count  │ │ Placeholder │ │ Text Slop   │            │
-│  │ (regex)     │ │ Detection   │ │ Patterns    │            │
-│  └──────┬──────┘ └──────┬──────┘ └──────┬──────┘            │
-│         │               │               │                    │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
-│  │ Import      │ │ Duplicate   │ │ Generic     │            │
-│  │ Analysis    │ │ Detection   │ │ Naming      │            │
-│  └──────┬──────┘ └──────┬──────┘ └──────┬──────┘            │
-│         │               │               │                    │
-│         └───────────────┼───────────────┘                    │
-│                         ▼                                    │
-│              ┌─────────────────────┐                         │
-│              │   Slop Report       │                         │
-│              │   (file:line:issue) │                         │
-│              └──────────┬──────────┘                         │
-├─────────────────────────┼───────────────────────────────────┤
-│  OPTIONAL: CLI TOOLS (user installs separately)             │
-│                         ▼                                    │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐            │
-│  │ jscpd       │ │ madge       │ │ escomplex   │            │
-│  │ (duplicates)│ │ (deps)      │ │ (complexity)│            │
-│  └─────────────┘ └─────────────┘ └─────────────┘            │
-│  Shell out if available, skip gracefully if not             │
-├─────────────────────────────────────────────────────────────┤
-│  OPTIONAL: LLM (only when needed)                           │
-│              ┌─────────────────────┐                         │
-│              │   Semantic Analysis │   ← Buzzword validation │
-│              │   (expensive)       │     Claim vs evidence   │
-│              └─────────────────────┘                         │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Key Principles
-
-1. **Zero-dep core**: Built-in detection runs with no npm dependencies
-2. **Optional enhancement**: Shell out to CLI tools if user has them installed
-3. **Graceful degradation**: Missing tools = skip that check, don't fail
-4. **LLM-last**: Only use tokens for semantic analysis that regex can't handle
-
-**Dependency cost**: Zero required. Optional tools = user's choice.
 
 ---
 
