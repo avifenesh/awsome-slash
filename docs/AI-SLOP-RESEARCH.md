@@ -681,62 +681,99 @@ let validated_email = normalize_email(&raw_input);
 | Disabled linters | ✅ Detected | Low |
 | Placeholder text | ✅ Detected | Low |
 
-### Missing High-Impact Detection (What Linters Miss)
+### High-Impact Detection Status (What Linters Miss)
 
-| Pattern | Status | Impact | Difficulty |
-|---------|--------|--------|------------|
-| Over-engineering metrics | ❌ Missing | **Critical** | Medium |
-| Placeholder functions (compilable stubs) | ❌ Missing | **High** | Easy |
-| Buzzword inflation | ❌ Missing | **High** | Hard |
-| Doc/code ratio | ❌ Missing | **Medium** | Easy |
-| Unnecessary abstraction | ❌ Missing | **Medium** | Hard |
-| Generic naming | ❌ Missing | **Medium** | Medium |
-| Phantom references in comments | ❌ Missing | **Medium** | Easy |
-| Verbosity detection | ❌ Missing | **Medium** | Medium |
+| Pattern | Status | Impact | Difficulty | Notes |
+|---------|--------|--------|------------|-------|
+| Placeholder functions (compilable stubs) | ✅ **Implemented** | **High** | Easy | v2.6.1 - Comprehensive for TS/JS/Rust/Python/Go/Java |
+| Doc/code ratio | ✅ **Committed** | **Medium** | Easy | main branch - `doc_code_ratio_js` pattern with multi-pass analysis |
+| Phantom references in comments | ✅ **Committed** | **Medium** | Easy | main branch - `issue_pr_references`, `file_path_references` patterns |
+| Over-engineering metrics | ⏳ **TODO** | **Critical** | Medium | Priority 3 - Lines per feature, file count, abstraction depth |
+| Buzzword inflation | ⏳ **TODO** | **High** | Hard | Priority 3 - Claim extraction vs evidence search |
+| Generic naming | ⏳ **TODO** | **Medium** | Medium | Priority 2 - Flag data/result/temp/value overuse |
+| Verbosity detection | ⏳ **TODO** | **Medium** | Medium | Priority 2 - Comment-to-code ratio, bombastic phrasing |
+| Unnecessary abstraction | ⏳ **Future** | **Medium** | Hard | Post-release consideration |
 
 > **Note**: Hallucinated imports, fake API calls, type errors are already caught by eslint/tsc/clippy.
+>
+> **Release Target**: Complete all ⏳ TODO items before v2.7.0 release.
+
+---
+
+## Implementation Status
+
+**Current Version**: 2.6.1 (npm)
+**Development**: main branch (not released)
+**Target Release**: v2.7.0 (after completing all priorities below)
+
+| Priority | Tasks | Status | Release |
+|----------|-------|--------|---------|
+| Priority 1 (Quick Wins) | 3 tasks | ✅ 100% Complete | Pending |
+| Priority 2 (Medium Effort) | 2 tasks | ⏳ 0% Complete | Pending |
+| Priority 3 (Advanced) | 2 tasks | ⏳ 0% Complete | Pending |
+| **Total** | **7 tasks** | **3/7 (43%)** | **After 100%** |
+
+**Commits on main (not released):**
+- `0e68b21` - feat(deslop): add doc/code ratio and phantom reference detection
+- `50ce0d2` - docs: update /deslop-around pattern documentation
 
 ---
 
 ## Recommendations
 
-### Priority 1: Quick Wins (Easy, High Impact)
+> **Release Strategy**: Complete all priority tasks below + major cleaning work before releasing v2.7.0. Target is to ship a comprehensive deslop enhancement as a complete feature set, not piecemeal releases.
 
-1. **Placeholder Function Detection**
+### Priority 1: Quick Wins (Easy, High Impact) - ✅ COMPLETED
+
+~~1. **Placeholder Function Detection**~~ ✅ **DONE** (Already implemented in v2.6.1)
    - Empty function bodies or `// TODO` only
    - `throw new Error('not implemented')` / `todo!()` / `unimplemented!()`
    - Functions returning hardcoded values (0, true, null, [])
+   - **Status**: Comprehensive detection for TS/JS/Rust/Python/Go/Java with 838+ tests
 
-2. **Doc/Code Ratio**
-   - Flag JSDoc/doc comments > function length
-   - Detect boilerplate doc patterns
+~~2. **Doc/Code Ratio**~~ ✅ **DONE** (Committed, not released)
+   - Flag JSDoc/doc comments > function length (3x threshold)
+   - Multi-pass analysis with brace matching
+   - **Pattern**: `doc_code_ratio_js` in `lib/patterns/slop-patterns.js`
+   - **Analyzer**: `analyzeDocCodeRatio()` in `lib/patterns/slop-analyzers.js`
+   - **Status**: 35+ tests, A+ coverage
 
-3. **Phantom Reference Validation**
-   - Verify issue/PR numbers exist
-   - Check file path references
+~~3. **Phantom Reference Validation**~~ ✅ **DONE** (Committed, not released)
+   - Simplified: ANY issue/PR/iteration mention is flagged as slop
+   - File path references in comments flagged as potentially outdated
+   - **Patterns**: `issue_pr_references` (autoFix: remove), `file_path_references` (autoFix: flag)
+   - **Status**: Comprehensive regex tests with ReDoS protection
 
-### Priority 2: Medium Effort (Medium, High Impact)
+### Priority 2: Medium Effort (Medium, High Impact) - ⏳ PENDING
 
-4. **Generic Naming Detection**
+4. **Generic Naming Detection** ⏳ TODO
    - Flag excessive use of: data, result, item, temp, value, output
    - Suggest more specific names
+   - **Difficulty**: Medium (regex + heuristics)
+   - **Impact**: Medium (improves code clarity)
 
-5. **Verbosity Detection**
+5. **Verbosity Detection** ⏳ TODO
    - Comment-to-code ratio per function
    - Flag comments that restate obvious code
    - Detect bombastic phrasing patterns
+   - **Difficulty**: Medium (AST or line analysis)
+   - **Impact**: Medium (reduces noise)
 
-### Priority 3: Advanced (Hard, Critical Impact)
+### Priority 3: Advanced (Hard, Critical Impact) - ⏳ PENDING
 
-6. **Over-Engineering Metrics**
+6. **Over-Engineering Metrics** ⏳ TODO
    - Lines per feature ratio
    - File count analysis
    - Abstraction depth measurement
+   - **Difficulty**: Hard (requires project-level analysis)
+   - **Impact**: Critical (detects the #1 AI slop indicator)
 
-7. **Buzzword Inflation**
+7. **Buzzword Inflation** ⏳ TODO
    - Claim extraction from docs
    - Evidence search in code
    - Gap reporting
+   - **Difficulty**: Hard (semantic analysis, evidence gathering)
+   - **Impact**: Critical (validates documentation claims)
 
 ---
 
