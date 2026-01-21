@@ -634,15 +634,9 @@ const slopPatterns = {
 
   // ============================================================================
   // Generic Naming Detection
-  // Detects overly generic variable names that reduce code clarity
   // ============================================================================
 
-  /**
-   * JavaScript/TypeScript: Generic variable names
-   * Detects variables named data, result, item, temp, value, etc.
-   * Excludes: loop iteration variables, destructured variables
-   * Note: Using 'i' flag only (not 'g') to avoid stateful regex issues in tests
-   */
+  /** JavaScript/TypeScript: Generic variable names */
   generic_naming_js: {
     pattern: /\b(?:const|let|var)\s+(data|result|item|temp|value|output|response|obj|ret|res|val|arr|str|num|buf|ctx|cfg|opts|args|params)\s*[=:]/i,
     exclude: ['*.test.*', '*.spec.*', '**/test/**', '**/tests/**'],
@@ -652,11 +646,7 @@ const slopPatterns = {
     description: 'Generic variable name that could be more descriptive (e.g., "data" -> "userData")'
   },
 
-  /**
-   * Python: Generic variable names
-   * Detects assignment to generic names (excludes for-in loop variables)
-   * Uses multiline flag for ^ anchor to work per-line
-   */
+  /** Python: Generic variable names */
   generic_naming_py: {
     pattern: /^(\s*)(?!.*\bfor\s+\w+\s+in\b)(data|result|item|temp|value|output|response|obj|ret|res|val|arr|ctx|cfg|opts|args|params)\s*[:=]/im,
     exclude: ['*test*.py', '**/test_*.py', '**/tests/**', 'conftest.py'],
@@ -666,10 +656,7 @@ const slopPatterns = {
     description: 'Generic variable name that could be more descriptive'
   },
 
-  /**
-   * Rust: Generic variable names
-   * Detects let/let mut with generic names
-   */
+  /** Rust: Generic variable names */
   generic_naming_rust: {
     pattern: /\blet\s+(?:mut\s+)?(data|result|item|temp|value|output|response|obj|ret|res|val|buf|ctx|cfg|opts|args)\s*[=:]/i,
     exclude: ['*_test.rs', '*_tests.rs', '**/tests/**'],
@@ -679,10 +666,7 @@ const slopPatterns = {
     description: 'Generic variable name that could be more descriptive'
   },
 
-  /**
-   * Go: Generic variable names
-   * Detects short declaration with generic names
-   */
+  /** Go: Generic variable names */
   generic_naming_go: {
     pattern: /\b(?:var\s+)?(data|result|item|temp|value|output|response|obj|ret|res|val|buf|ctx|cfg|opts|args)\s*:=/i,
     exclude: ['*_test.go', '**/tests/**', '**/testdata/**'],
