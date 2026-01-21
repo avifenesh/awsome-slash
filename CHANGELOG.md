@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Over-Engineering Metrics Detection** - New project-level analysis for `/deslop-around` command
+  - Detects three signals of over-engineering (the #1 AI slop indicator):
+    - File proliferation: >20 files per export
+    - Code density: >500 lines per export
+    - Directory depth: >4 levels in src/
+  - Multi-language support: JavaScript/TypeScript, Rust, Go, Python
+  - Export detection via standard entry points (index.js, lib.rs, __init__.py, etc.)
+  - Returns metrics with violations and severity (HIGH/MEDIUM/OK)
+  - New `analyzeOverEngineering()` function in slop-analyzers.js
+  - Severity `high`, autoFix `flag` (cannot auto-fix architectural issues)
 - **Generic Naming Detection** - New patterns for `/deslop-around` command to flag overly generic variable names
   - JavaScript/TypeScript: `const/let/var data`, `result`, `item`, `temp`, `value`, `response`, etc.
   - Python: Generic assignments (excludes for-in loop variables)

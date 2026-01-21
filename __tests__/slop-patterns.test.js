@@ -13,7 +13,9 @@ const {
   getAvailableLanguages,
   getAvailableSeverities,
   hasLanguage,
-  isFileExcluded
+  isFileExcluded,
+  getMultiPassPatterns,
+  analyzers
 } = require('../lib/patterns/slop-patterns');
 
 describe('slop-patterns', () => {
@@ -1741,6 +1743,101 @@ describe('slop-patterns', () => {
           expect(Date.now() - start).toBeLessThan(MAX_SAFE_TIME);
         });
       });
+    });
+  });
+
+  // ============================================================================
+  // Over-Engineering Metrics Pattern Tests
+  // ============================================================================
+
+  describe('over_engineering_metrics pattern', () => {
+    it('should exist with correct metadata', () => {
+      expect(slopPatterns).toHaveProperty('over_engineering_metrics');
+      const pattern = slopPatterns.over_engineering_metrics;
+
+      expect(pattern.severity).toBe('high');
+      expect(pattern.autoFix).toBe('flag');
+      expect(pattern.language).toBeNull();
+      expect(pattern.description).toContain('over-engineering');
+    });
+
+    it('should have pattern set to null (multi-pass only)', () => {
+      expect(slopPatterns.over_engineering_metrics.pattern).toBeNull();
+    });
+
+    it('should have requiresMultiPass set to true', () => {
+      expect(slopPatterns.over_engineering_metrics.requiresMultiPass).toBe(true);
+    });
+
+    it('should have threshold configuration', () => {
+      const pattern = slopPatterns.over_engineering_metrics;
+
+      expect(pattern.fileRatioThreshold).toBe(20);
+      expect(pattern.linesPerExportThreshold).toBe(500);
+      expect(pattern.depthThreshold).toBe(4);
+    });
+
+    it('should be included in getMultiPassPatterns()', () => {
+      const multiPassPatterns = getMultiPassPatterns();
+
+      expect(multiPassPatterns).toHaveProperty('over_engineering_metrics');
+      expect(multiPassPatterns.over_engineering_metrics.requiresMultiPass).toBe(true);
+    });
+
+    it('should be included in universal patterns (language: null)', () => {
+      const universalPatterns = getUniversalPatterns();
+
+      expect(universalPatterns).toHaveProperty('over_engineering_metrics');
+    });
+
+    it('should be included in high severity patterns', () => {
+      const highPatterns = getPatternsBySeverity('high');
+
+      expect(highPatterns).toHaveProperty('over_engineering_metrics');
+    });
+
+    it('should be included in flag autoFix patterns', () => {
+      const flagPatterns = getPatternsByAutoFix('flag');
+
+      expect(flagPatterns).toHaveProperty('over_engineering_metrics');
+    });
+  });
+
+  describe('getMultiPassPatterns', () => {
+    it('should return only patterns with requiresMultiPass: true', () => {
+      const multiPassPatterns = getMultiPassPatterns();
+
+      expect(Object.keys(multiPassPatterns).length).toBeGreaterThan(0);
+
+      Object.entries(multiPassPatterns).forEach(([name, pattern]) => {
+        expect(pattern.requiresMultiPass).toBe(true);
+      });
+    });
+
+    it('should include doc_code_ratio_js pattern', () => {
+      const multiPassPatterns = getMultiPassPatterns();
+
+      expect(multiPassPatterns).toHaveProperty('doc_code_ratio_js');
+    });
+
+    it('should include over_engineering_metrics pattern', () => {
+      const multiPassPatterns = getMultiPassPatterns();
+
+      expect(multiPassPatterns).toHaveProperty('over_engineering_metrics');
+    });
+  });
+
+  describe('analyzers export', () => {
+    it('should export analyzers module', () => {
+      expect(analyzers).toBeDefined();
+    });
+
+    it('should have analyzeDocCodeRatio function', () => {
+      expect(typeof analyzers.analyzeDocCodeRatio).toBe('function');
+    });
+
+    it('should have analyzeOverEngineering function', () => {
+      expect(typeof analyzers.analyzeOverEngineering).toBe('function');
     });
   });
 });

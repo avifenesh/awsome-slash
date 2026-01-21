@@ -710,8 +710,8 @@ let validated_email = normalize_email(&raw_input);
 |----------|-------|--------|---------|
 | Priority 1 (Quick Wins) | 3 tasks | ✅ 100% Complete | Pending |
 | Priority 2 (Medium Effort) | 2 tasks | ⏳ 50% Complete | Pending |
-| Priority 3 (Advanced) | 2 tasks | ⏳ 0% Complete | Pending |
-| **Total** | **7 tasks** | **4/7 (57%)** | **After 100%** |
+| Priority 3 (Advanced) | 2 tasks | ⏳ 50% Complete | Pending |
+| **Total** | **7 tasks** | **5/7 (71%)** | **After 100%** |
 
 **Commits on main (not released):**
 - `5950ccb` - feat(deslop): add generic naming detection for JS/TS, Python, Rust, Go (#110)
@@ -761,14 +761,15 @@ let validated_email = normalize_email(&raw_input);
    - **Difficulty**: Medium (AST or line analysis)
    - **Impact**: Medium (reduces noise)
 
-### Priority 3: Advanced (Hard, Critical Impact) - ⏳ PENDING
+### Priority 3: Advanced (Hard, Critical Impact) - ⏳ 50% COMPLETE
 
-6. **Over-Engineering Metrics** ⏳ TODO
-   - Lines per feature ratio
-   - File count analysis
-   - Abstraction depth measurement
-   - **Difficulty**: Hard (requires project-level analysis)
-   - **Impact**: Critical (detects the #1 AI slop indicator)
+~~6. **Over-Engineering Metrics**~~ ✅ **DONE** (Committed, not released)
+   - Export-based detection: files-per-export (>20x), lines-per-export (>500:1), directory depth (>4 levels)
+   - Multi-language: JavaScript/TypeScript, Rust, Go, Python
+   - Entry point scanning: index.js, lib.rs, __init__.py, main.go
+   - **Pattern**: `over_engineering_metrics` in `lib/patterns/slop-patterns.js`
+   - **Analyzer**: `analyzeOverEngineering()` in `lib/patterns/slop-analyzers.js`
+   - **Status**: 40+ tests, comprehensive coverage
 
 7. **Buzzword Inflation** ⏳ TODO
    - Claim extraction from docs

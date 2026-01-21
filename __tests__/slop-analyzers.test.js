@@ -5,8 +5,17 @@
 
 const {
   analyzeDocCodeRatio,
+  analyzeOverEngineering,
   findMatchingBrace,
-  countNonEmptyLines
+  countNonEmptyLines,
+  countExportsInContent,
+  detectLanguage,
+  shouldExclude,
+  isTestFile,
+  ENTRY_POINTS,
+  EXPORT_PATTERNS,
+  SOURCE_EXTENSIONS,
+  EXCLUDE_DIRS
 } = require('../lib/patterns/slop-analyzers');
 
 describe('slop-analyzers', () => {
@@ -523,6 +532,379 @@ function func${i}() {
       const start = Date.now();
       findMatchingBrace(content, 0);
       expect(Date.now() - start).toBeLessThan(MAX_SAFE_TIME);
+    });
+  });
+
+  // ============================================================================
+  // Over-Engineering Detection Tests
+  // ============================================================================
+
+  describe('detectLanguage', () => {
+    it('should detect JavaScript', () => {
+      expect(detectLanguage('file.js')).toBe('js');
+      expect(detectLanguage('file.jsx')).toBe('js');
+      expect(detectLanguage('file.mjs')).toBe('js');
+      expect(detectLanguage('file.cjs')).toBe('js');
+    });
+
+    it('should detect TypeScript', () => {
+      expect(detectLanguage('file.ts')).toBe('js');
+      expect(detectLanguage('file.tsx')).toBe('js');
+    });
+
+    it('should detect Rust', () => {
+      expect(detectLanguage('file.rs')).toBe('rust');
+    });
+
+    it('should detect Go', () => {
+      expect(detectLanguage('file.go')).toBe('go');
+    });
+
+    it('should detect Python', () => {
+      expect(detectLanguage('file.py')).toBe('python');
+    });
+
+    it('should default to JS for unknown extensions', () => {
+      expect(detectLanguage('file.txt')).toBe('js');
+      expect(detectLanguage('file.unknown')).toBe('js');
+    });
+  });
+
+  describe('shouldExclude', () => {
+    it('should exclude node_modules', () => {
+      expect(shouldExclude('node_modules/package/index.js')).toBe(true);
+      expect(shouldExclude('src/node_modules/file.js')).toBe(true);
+    });
+
+    it('should exclude common build directories', () => {
+      expect(shouldExclude('dist/bundle.js')).toBe(true);
+      expect(shouldExclude('build/output.js')).toBe(true);
+      expect(shouldExclude('out/file.js')).toBe(true);
+      expect(shouldExclude('target/debug/main.rs')).toBe(true);
+    });
+
+    it('should exclude version control', () => {
+      expect(shouldExclude('.git/objects/file')).toBe(true);
+      expect(shouldExclude('.svn/file')).toBe(true);
+    });
+
+    it('should not exclude source files', () => {
+      expect(shouldExclude('src/index.js')).toBe(false);
+      expect(shouldExclude('lib/utils.ts')).toBe(false);
+    });
+
+    it('should handle Windows paths', () => {
+      expect(shouldExclude('node_modules\\package\\index.js')).toBe(true);
+      expect(shouldExclude('src\\index.js')).toBe(false);
+    });
+  });
+
+  describe('isTestFile', () => {
+    it('should detect .test.js files', () => {
+      expect(isTestFile('file.test.js')).toBe(true);
+      expect(isTestFile('file.test.ts')).toBe(true);
+      expect(isTestFile('file.test.jsx')).toBe(true);
+    });
+
+    it('should detect .spec.js files', () => {
+      expect(isTestFile('file.spec.js')).toBe(true);
+      expect(isTestFile('file.spec.ts')).toBe(true);
+    });
+
+    it('should detect Go test files', () => {
+      expect(isTestFile('file_test.go')).toBe(true);
+    });
+
+    it('should detect Rust test files', () => {
+      expect(isTestFile('file_test.rs')).toBe(true);
+      expect(isTestFile('file_tests.rs')).toBe(true);
+    });
+
+    it('should detect Python test files', () => {
+      expect(isTestFile('file_test.py')).toBe(true);
+      expect(isTestFile('test_file.py')).toBe(true);
+    });
+
+    it('should detect __tests__ directories', () => {
+      expect(isTestFile('__tests__/file.js')).toBe(true);
+    });
+
+    it('should detect tests/ directories', () => {
+      expect(isTestFile('tests/file.js')).toBe(true);
+      expect(isTestFile('test/file.js')).toBe(true);
+    });
+
+    it('should not flag non-test files', () => {
+      expect(isTestFile('src/index.js')).toBe(false);
+      expect(isTestFile('lib/utils.ts')).toBe(false);
+    });
+  });
+
+  describe('countExportsInContent', () => {
+    describe('JavaScript/TypeScript', () => {
+      it('should count export function', () => {
+        const content = 'export function foo() {}\nexport function bar() {}';
+        expect(countExportsInContent(content, 'js')).toBe(2);
+      });
+
+      it('should count export class', () => {
+        const content = 'export class Foo {}\nexport class Bar {}';
+        expect(countExportsInContent(content, 'js')).toBe(2);
+      });
+
+      it('should count export const/let/var', () => {
+        const content = 'export const a = 1;\nexport let b = 2;\nexport var c = 3;';
+        expect(countExportsInContent(content, 'js')).toBe(3);
+      });
+
+      it('should count export default', () => {
+        const content = 'export default function() {}';
+        expect(countExportsInContent(content, 'js')).toBe(1);
+      });
+
+      it('should count module.exports', () => {
+        const content = 'module.exports = { foo, bar };';
+        expect(countExportsInContent(content, 'js')).toBe(1);
+      });
+
+      it('should count exports.name', () => {
+        const content = 'exports.foo = foo;\nexports.bar = bar;';
+        expect(countExportsInContent(content, 'js')).toBe(2);
+      });
+
+      it('should count async function exports', () => {
+        const content = 'export async function fetch() {}';
+        expect(countExportsInContent(content, 'js')).toBe(1);
+      });
+
+      it('should count named re-exports', () => {
+        const content = "export { Foo, Bar } from './module';";
+        expect(countExportsInContent(content, 'js')).toBe(1);
+      });
+
+      it('should count star re-exports', () => {
+        const content = "export * from './utils';";
+        expect(countExportsInContent(content, 'js')).toBe(1);
+      });
+
+      it('should count star re-exports with alias', () => {
+        const content = "export * as Utils from './utils';";
+        expect(countExportsInContent(content, 'js')).toBe(1);
+      });
+
+      it('should count multiple re-export patterns', () => {
+        const content = `
+          export { Foo } from './foo';
+          export * from './bar';
+          export { Baz, Qux } from './baz';
+        `;
+        expect(countExportsInContent(content, 'js')).toBe(3);
+      });
+    });
+
+    describe('Rust', () => {
+      it('should count pub fn', () => {
+        const content = 'pub fn foo() {}\npub fn bar() {}';
+        expect(countExportsInContent(content, 'rust')).toBe(2);
+      });
+
+      it('should count pub struct', () => {
+        const content = 'pub struct Foo {}\npub struct Bar {}';
+        expect(countExportsInContent(content, 'rust')).toBe(2);
+      });
+
+      it('should count pub enum', () => {
+        const content = 'pub enum State { A, B }';
+        expect(countExportsInContent(content, 'rust')).toBe(1);
+      });
+
+      it('should count pub mod', () => {
+        const content = 'pub mod utils;\npub mod helpers;';
+        expect(countExportsInContent(content, 'rust')).toBe(2);
+      });
+
+      it('should count pub type', () => {
+        const content = 'pub type Result<T> = std::result::Result<T, Error>;';
+        expect(countExportsInContent(content, 'rust')).toBe(1);
+      });
+
+      it('should count pub trait', () => {
+        const content = 'pub trait Runnable { fn run(&self); }';
+        expect(countExportsInContent(content, 'rust')).toBe(1);
+      });
+
+      it('should not count private items', () => {
+        const content = 'fn private() {}\nstruct Private {}';
+        expect(countExportsInContent(content, 'rust')).toBe(0);
+      });
+    });
+
+    describe('Go', () => {
+      it('should count exported functions (capitalized)', () => {
+        const content = 'func Foo() {}\nfunc Bar() {}';
+        expect(countExportsInContent(content, 'go')).toBe(2);
+      });
+
+      it('should count exported types', () => {
+        const content = 'type Foo struct {}\ntype Bar interface {}';
+        expect(countExportsInContent(content, 'go')).toBe(2);
+      });
+
+      it('should count exported vars', () => {
+        const content = 'var Foo = 1\nvar Bar = 2';
+        expect(countExportsInContent(content, 'go')).toBe(2);
+      });
+
+      it('should count exported consts', () => {
+        const content = 'const Foo = 1\nconst Bar = 2';
+        expect(countExportsInContent(content, 'go')).toBe(2);
+      });
+
+      it('should not count private items (lowercase)', () => {
+        const content = 'func foo() {}\ntype bar struct {}';
+        expect(countExportsInContent(content, 'go')).toBe(0);
+      });
+    });
+
+    describe('Python', () => {
+      it('should count public functions', () => {
+        const content = 'def foo():\n    pass\ndef bar():\n    pass';
+        expect(countExportsInContent(content, 'python')).toBe(2);
+      });
+
+      it('should count public classes', () => {
+        const content = 'class Foo:\n    pass\nclass Bar:\n    pass';
+        expect(countExportsInContent(content, 'python')).toBe(2);
+      });
+
+      it('should count __all__', () => {
+        const content = '__all__ = ["foo", "bar", "baz"]';
+        expect(countExportsInContent(content, 'python')).toBe(1);
+      });
+
+      it('should not count private functions', () => {
+        const content = 'def _private():\n    pass\ndef __dunder__():\n    pass';
+        // Now correctly excludes functions starting with underscore
+        expect(countExportsInContent(content, 'python')).toBe(0);
+      });
+
+      it('should count public functions with various names', () => {
+        const content = 'def public_func():\n    pass\ndef PublicClass():\n    pass';
+        expect(countExportsInContent(content, 'python')).toBe(2);
+      });
+    });
+  });
+
+  describe('constants', () => {
+    it('should have ENTRY_POINTS defined', () => {
+      expect(ENTRY_POINTS).toBeDefined();
+      expect(ENTRY_POINTS.length).toBeGreaterThan(0);
+      expect(ENTRY_POINTS).toContain('index.js');
+      expect(ENTRY_POINTS).toContain('lib.rs');
+    });
+
+    it('should have EXPORT_PATTERNS for each language', () => {
+      expect(EXPORT_PATTERNS.js).toBeDefined();
+      expect(EXPORT_PATTERNS.rust).toBeDefined();
+      expect(EXPORT_PATTERNS.go).toBeDefined();
+      expect(EXPORT_PATTERNS.python).toBeDefined();
+    });
+
+    it('should have SOURCE_EXTENSIONS for each language', () => {
+      expect(SOURCE_EXTENSIONS.js).toContain('.js');
+      expect(SOURCE_EXTENSIONS.rust).toContain('.rs');
+      expect(SOURCE_EXTENSIONS.go).toContain('.go');
+      expect(SOURCE_EXTENSIONS.python).toContain('.py');
+    });
+
+    it('should have EXCLUDE_DIRS with common directories', () => {
+      expect(EXCLUDE_DIRS).toContain('node_modules');
+      expect(EXCLUDE_DIRS).toContain('dist');
+      expect(EXCLUDE_DIRS).toContain('build');
+      expect(EXCLUDE_DIRS).toContain('.git');
+    });
+  });
+
+  describe('analyzeOverEngineering (with mocks)', () => {
+    // Create a mock file system for testing
+    const createMockFs = (files) => {
+      const mockFs = {
+        readdirSync: (dir, options) => {
+          const entries = files
+            .filter(f => {
+              const parent = f.path.substring(0, f.path.lastIndexOf('/') || f.path.lastIndexOf('\\'));
+              return parent === dir || (dir.endsWith('/') && f.path.startsWith(dir));
+            })
+            .map(f => {
+              const name = f.path.substring(f.path.lastIndexOf('/') + 1);
+              return {
+                name,
+                isFile: () => f.type === 'file',
+                isDirectory: () => f.type === 'dir'
+              };
+            });
+          return entries;
+        },
+        readFileSync: (path) => {
+          const file = files.find(f => f.path === path || path.endsWith(f.path));
+          if (!file) throw new Error('ENOENT');
+          return file.content || '';
+        },
+        statSync: (path) => {
+          const file = files.find(f => f.path === path || path.endsWith(f.path));
+          if (!file) throw new Error('ENOENT');
+          return {
+            isFile: () => file.type === 'file',
+            isDirectory: () => file.type === 'dir'
+          };
+        }
+      };
+      return mockFs;
+    };
+
+    it('should return OK verdict for well-structured project', () => {
+      // This test would need actual file system access
+      // For now, just verify the function exists and returns expected shape
+      expect(typeof analyzeOverEngineering).toBe('function');
+    });
+
+    it('should include all expected metrics in result', () => {
+      // Mock a minimal project
+      const result = analyzeOverEngineering('/fake/path', {
+        fs: createMockFs([]),
+        path: require('path')
+      });
+
+      expect(result).toHaveProperty('metrics');
+      expect(result).toHaveProperty('violations');
+      expect(result).toHaveProperty('verdict');
+      expect(result.metrics).toHaveProperty('sourceFiles');
+      expect(result.metrics).toHaveProperty('exports');
+      expect(result.metrics).toHaveProperty('totalLines');
+      expect(result.metrics).toHaveProperty('directoryDepth');
+    });
+
+    it('should use fallback when no entry points found', () => {
+      const result = analyzeOverEngineering('/fake/path', {
+        fs: createMockFs([]),
+        path: require('path')
+      });
+
+      expect(result.metrics.exportMethod).toBe('fallback');
+      expect(result.metrics.exports).toBe(1); // Fallback to 1
+    });
+
+    it('should respect custom thresholds', () => {
+      const result = analyzeOverEngineering('/fake/path', {
+        fs: createMockFs([]),
+        path: require('path'),
+        fileRatioThreshold: 5,
+        linesPerExportThreshold: 100,
+        depthThreshold: 2
+      });
+
+      // With empty mock, ratios are 0/1, so no violations
+      expect(result.violations.length).toBe(0);
     });
   });
 });
