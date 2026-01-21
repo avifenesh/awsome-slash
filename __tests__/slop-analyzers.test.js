@@ -2019,7 +2019,7 @@ module.exports = { helper };
         expect(result.violations.length).toBe(1);
         expect(result.violations[0].varName).toBe('redisClient');
         expect(result.violations[0].type).toBe('RedisClient');
-        expect(result.verdict).toBe('LOW');
+        expect(result.verdict).toBe('HIGH');
       });
 
       it('should not flag client used in same file', () => {
@@ -2120,7 +2120,7 @@ module.exports = {};
         expect(result.usagesFound).toBe(0);
         expect(result.violations.length).toBe(1);
         expect(result.violations[0].varName).toBe('dbConnection');
-        expect(result.verdict).toBe('LOW');
+        expect(result.verdict).toBe('HIGH');
       });
     });
 
@@ -2169,7 +2169,7 @@ if __name__ == '__main__':
         expect(result.usagesFound).toBe(0);
         expect(result.violations.length).toBe(1);
         expect(result.violations[0].varName).toBe('redis_client');
-        expect(result.verdict).toBe('LOW');
+        expect(result.verdict).toBe('HIGH');
       });
     });
 
@@ -2220,7 +2220,7 @@ func main() {
         expect(result.usagesFound).toBe(0);
         expect(result.violations.length).toBe(1);
         expect(result.violations[0].varName).toBe('redisClient');
-        expect(result.verdict).toBe('LOW');
+        expect(result.verdict).toBe('HIGH');
       });
 
       it('should not flag Go client used in function', () => {
@@ -2319,7 +2319,7 @@ fn main() {
         expect(result.usagesFound).toBe(0);
         expect(result.violations.length).toBe(1);
         expect(result.violations[0].varName).toBe('redis_client');
-        expect(result.verdict).toBe('LOW');
+        expect(result.verdict).toBe('HIGH');
       });
     });
 
