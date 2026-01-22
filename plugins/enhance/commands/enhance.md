@@ -27,14 +27,14 @@ Parse from $ARGUMENTS:
 
 ## Detection Categories
 
-### HIGH Certainty (auto-fixable)
+### HIGH Certainty
 
 | Pattern | Description | Auto-Fix |
 |---------|-------------|----------|
 | Missing additionalProperties | Schema allows extra fields | Add `"additionalProperties": false` |
 | Missing required fields | Parameters not marked required | Add to `required` array |
 | Version mismatch | plugin.json vs package.json | Sync versions |
-| Missing tool description | Tool has no description | Flag for manual fix |
+| Missing tool description | Tool has no description | Manual fix required |
 
 ### MEDIUM Certainty (verify context)
 
@@ -93,7 +93,7 @@ console.log(report);
 // Apply fixes if requested
 if (applyFixes) {
   const fixed = await pluginAnalyzer.applyFixes(results);
-  console.log(`Applied ${fixed.length} fixes`);
+  console.log(`Applied ${fixed.applied.length} fixes`);
 }
 ```
 
