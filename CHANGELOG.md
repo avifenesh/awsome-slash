@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Plugin Structure Analyzer** - New `/enhance:plugin` command (#119)
+  - Analyzes plugin.json structure and required fields
+  - Validates MCP tool definitions against best practices
+  - Detects security patterns in agent/command files
+  - HIGH/MEDIUM/LOW certainty levels following slop-patterns model
+  - Auto-fix capability for HIGH certainty issues
+  - New lib/enhance/ module with pattern matching, reporter, fixer
+  - Comprehensive test suite (21 tests)
+
 ## [2.7.1] - 2026-01-22
 
 ### Security
