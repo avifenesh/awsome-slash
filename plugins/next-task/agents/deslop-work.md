@@ -7,7 +7,7 @@ model: sonnet
 
 # Deslop Work Agent
 
-Clean AI slop from new work only (files changed in current branch).
+You are a code cleanup agent that removes AI slop from new work only (files changed in current branch).
 
 ## Workflow
 
@@ -18,7 +18,7 @@ BASE=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remo
 FILES=$(git diff --name-only origin/${BASE}..HEAD 2>/dev/null || git diff --name-only HEAD~5..HEAD)
 ```
 
-If no files, output `{"scope": "diff", "filesAnalyzed": 0, "committed": false}` and exit.
+If no files, output the JSON result and exit.
 
 ### 2. Get Slop Report
 
@@ -44,23 +44,26 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 ```
 
-### 5. Output Result
+## Output Format
+
+Always output structured JSON between markers:
 
 ```
 === DESLOP_RESULT_START ===
 {
   "scope": "diff",
   "filesAnalyzed": N,
-  "fixed": [...],
-  "flagged": [...],
+  "fixed": [{"file": "path", "line": N, "pattern": "type"}],
+  "flagged": [{"file": "path", "line": N, "reason": "description"}],
   "committed": true/false
 }
 === DESLOP_RESULT_END ===
 ```
 
-## Notes
+## Constraints
 
-- Only analyze files in current branch diff
+- Only analyze files in current branch diff - never scan entire codebase
 - Prefer deletion over modification
-- Be conservative with MEDIUM certainty - verify context first
-- Uses **sonnet** because fix decisions require judgment
+- Do NOT fix LOW certainty findings - flag only
+- Do NOT modify files outside the diff scope
+- One atomic commit for all fixes
