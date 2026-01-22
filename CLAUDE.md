@@ -80,10 +80,11 @@ Cannot skip in /next-task:
 
 4 reviewers: Copilot, Claude, Gemini, Codex
 
-1. Wait 3 min after PR creation
-2. Read ALL comments
-3. Address EVERY comment
-4. Iterate until zero unresolved
+1. Wait 3 min after PR creation (initial auto-reviews)
+2. Claude-review may take 10+ min - wait for it
+3. Read ALL comments
+4. Address EVERY comment
+5. Iterate until zero unresolved
 
 ## Core Priorities
 
