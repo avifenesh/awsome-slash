@@ -235,19 +235,19 @@ For HIGH certainty issues with available fixes:
 
 | Category | Patterns | Auto-Fixable |
 |----------|----------|--------------|
-| Structure | 6 | 3 |
+| Structure | 6 | 2 |
 | Tool | 2 | 1 |
 | XML | 1 | 0 |
 | CoT | 2 | 0 |
 | Example | 1 | 0 |
 | Anti-Pattern | 2 | 0 |
-| **Total** | **14** | **4** |
+| **Total** | **14** | **3** |
 
 ### Certainty Distribution
 
 | Level | Count | Meaning |
 |-------|-------|---------|
-| HIGH | 8 | Definite issues, auto-fixable |
+| HIGH | 8 | Definite issues (some auto-fixable) |
 | MEDIUM | 5 | Likely improvements |
 | LOW | 1 | Advisory suggestions |
 

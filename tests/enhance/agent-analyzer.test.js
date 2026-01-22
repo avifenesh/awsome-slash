@@ -412,7 +412,7 @@ model: sonnet
 
     it('should handle malformed frontmatter', () => {
       const content = '---\nmalformed\n\nBody';
-      const { frontmatter, body } = agentAnalyzer.parseMarkdownFrontmatter(content);
+      const { frontmatter } = agentAnalyzer.parseMarkdownFrontmatter(content);
 
       expect(frontmatter).toBeNull();
     });

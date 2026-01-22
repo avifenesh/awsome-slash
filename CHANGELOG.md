@@ -16,9 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Evaluates chain-of-thought appropriateness for task complexity
   - Detects anti-patterns: vague language, prompt bloat, example count
   - HIGH/MEDIUM/LOW certainty levels for findings
-  - Auto-fix capability for HIGH certainty issues (4 patterns)
+  - Auto-fix capability for HIGH certainty issues (3 patterns)
   - New lib/enhance/agent-analyzer.js and agent-patterns.js
-  - Comprehensive test suite (21 tests)
+  - Comprehensive test suite (45 tests)
   - Uses opus model for quality multiplier effect
 
 - **Plugin Structure Analyzer** - New `/enhance:plugin` command (#119)
@@ -43,18 +43,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **GitHub Issue Progress Comments** - Workflow now documents decisions and progress in issue comments (#95)
-- **Agent Prompt Optimizer** - New `/enhance:agent` command (#120)
-  - Analyzes agent prompt files for prompt engineering best practices
-  - 14 detection patterns across 6 categories: structure, tools, XML, CoT, examples, anti-patterns
-  - Validates frontmatter (name, description, tools, model)
-  - Checks tool restrictions (unrestricted Bash detection)
-  - Evaluates chain-of-thought appropriateness for task complexity
-  - Detects anti-patterns: vague language, prompt bloat, example count
-  - HIGH/MEDIUM/LOW certainty levels for findings
-  - Auto-fix capability for HIGH certainty issues (4 patterns)
-  - New lib/enhance/agent-analyzer.js and agent-patterns.js
-  - Comprehensive test suite (21 tests)
-  - Uses opus model for quality multiplier effect
   - Task discoverer posts "Workflow Started" comment when selecting a GitHub issue
   - Planning agent posts plan summary to issue for documentation
   - /ship posts completion comment and auto-closes issue on successful merge
