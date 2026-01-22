@@ -2,8 +2,6 @@
  * Plugin Analyzer Tests
  */
 
-const { describe, it, beforeEach, afterEach } = require('node:test');
-const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 
@@ -27,8 +25,8 @@ describe('Plugin Patterns', () => {
       const pattern = pluginPatterns.pluginPatterns.missing_additional_properties;
       const result = pattern.check(schema);
 
-      assert.ok(result, 'Should detect missing additionalProperties');
-      assert.ok(result.issue.includes('additionalProperties'));
+      expect(result).toBeTruthy();
+      expect(result.issue).toContain('additionalProperties');
     });
 
     it('should not flag when additionalProperties is false', () => {
@@ -43,7 +41,7 @@ describe('Plugin Patterns', () => {
       const pattern = pluginPatterns.pluginPatterns.missing_additional_properties;
       const result = pattern.check(schema);
 
-      assert.strictEqual(result, null, 'Should not flag when additionalProperties is false');
+      expect(result).toBeNull();
     });
 
     it('should provide auto-fix function', () => {
@@ -57,10 +55,10 @@ describe('Plugin Patterns', () => {
       const pattern = pluginPatterns.pluginPatterns.missing_additional_properties;
       const result = pattern.check(schema);
 
-      assert.ok(result.autoFixFn, 'Should have auto-fix function');
+      expect(result.autoFixFn).toBeTruthy();
 
       const fixed = result.autoFixFn(schema);
-      assert.strictEqual(fixed.additionalProperties, false);
+      expect(fixed.additionalProperties).toBe(false);
     });
   });
 
@@ -77,7 +75,7 @@ describe('Plugin Patterns', () => {
       const pattern = pluginPatterns.pluginPatterns.missing_required_fields;
       const result = pattern.check(schema);
 
-      assert.ok(result, 'Should detect missing required array');
+      expect(result).toBeTruthy();
     });
 
     it('should not flag when required is present', () => {
@@ -92,7 +90,7 @@ describe('Plugin Patterns', () => {
       const pattern = pluginPatterns.pluginPatterns.missing_required_fields;
       const result = pattern.check(schema);
 
-      assert.strictEqual(result, null);
+      expect(result).toBeNull();
     });
   });
 
@@ -104,9 +102,9 @@ describe('Plugin Patterns', () => {
       const pattern = pluginPatterns.pluginPatterns.version_mismatch;
       const result = pattern.check(pluginJson, packageJson);
 
-      assert.ok(result, 'Should detect version mismatch');
-      assert.ok(result.issue.includes('1.0.0'));
-      assert.ok(result.issue.includes('2.0.0'));
+      expect(result).toBeTruthy();
+      expect(result.issue).toContain('1.0.0');
+      expect(result.issue).toContain('2.0.0');
     });
 
     it('should not flag when versions match', () => {
@@ -116,7 +114,7 @@ describe('Plugin Patterns', () => {
       const pattern = pluginPatterns.pluginPatterns.version_mismatch;
       const result = pattern.check(pluginJson, packageJson);
 
-      assert.strictEqual(result, null);
+      expect(result).toBeNull();
     });
   });
 
@@ -147,8 +145,8 @@ describe('Plugin Patterns', () => {
       const pattern = pluginPatterns.pluginPatterns.deep_nesting;
       const result = pattern.check(schema);
 
-      assert.ok(result, 'Should detect deep nesting');
-      assert.ok(result.issue.includes('nested'));
+      expect(result).toBeTruthy();
+      expect(result.issue).toContain('nested');
     });
   });
 });
@@ -161,7 +159,7 @@ describe('Tool Patterns', () => {
       const pattern = toolPatterns.toolPatterns.poor_tool_naming;
       const result = pattern.check(tool);
 
-      assert.ok(result, 'Should flag non-verb name');
+      expect(result).toBeTruthy();
     });
 
     it('should accept verb-prefixed names', () => {
@@ -170,7 +168,7 @@ describe('Tool Patterns', () => {
       const pattern = toolPatterns.toolPatterns.poor_tool_naming;
       const result = pattern.check(tool);
 
-      assert.strictEqual(result, null);
+      expect(result).toBeNull();
     });
   });
 
@@ -189,7 +187,7 @@ describe('Tool Patterns', () => {
 
       const issues = toolPatterns.analyzeTool(tool);
 
-      assert.ok(issues.length > 0, 'Should find issues');
+      expect(issues.length).toBeGreaterThan(0);
     });
   });
 });
@@ -208,7 +206,7 @@ tools: Read, Bash, Grep
       const issues = securityPatterns.checkSecurity(content, 'test.md');
 
       const bashIssue = issues.find(i => i.patternId === 'unrestricted_bash');
-      assert.ok(bashIssue, 'Should detect unrestricted Bash');
+      expect(bashIssue).toBeTruthy();
     });
 
     it('should not flag restricted Bash', () => {
@@ -223,7 +221,7 @@ tools: Read, Bash(git:*), Grep
       const issues = securityPatterns.checkSecurity(content, 'test.md');
 
       const bashIssue = issues.find(i => i.patternId === 'unrestricted_bash');
-      assert.strictEqual(bashIssue, undefined, 'Should not flag restricted Bash');
+      expect(bashIssue).toBeUndefined();
     });
   });
 
@@ -238,7 +236,7 @@ const config = {
       const issues = securityPatterns.checkSecurity(content, 'config.js');
 
       const secretIssue = issues.find(i => i.patternId === 'hardcoded_secrets');
-      assert.ok(secretIssue, 'Should detect hardcoded secret');
+      expect(secretIssue).toBeTruthy();
     });
   });
 });
@@ -258,9 +256,9 @@ describe('Reporter', () => {
 
       const report = reporter.generateReport(results);
 
-      assert.ok(report.includes('test-plugin'));
-      assert.ok(report.includes('get_data'));
-      assert.ok(report.includes('HIGH'));
+      expect(report).toContain('test-plugin');
+      expect(report).toContain('get_data');
+      expect(report).toContain('HIGH');
     });
 
     it('should filter LOW certainty when not verbose', () => {
@@ -277,8 +275,8 @@ describe('Reporter', () => {
 
       const report = reporter.generateReport(results, { verbose: false });
 
-      assert.ok(!report.includes('Low issue'), 'Should not include LOW issues');
-      assert.ok(report.includes('High issue'), 'Should include HIGH issues');
+      expect(report).not.toContain('Low issue');
+      expect(report).toContain('High issue');
     });
   });
 });
@@ -295,7 +293,7 @@ describe('Fixer', () => {
 
       const fixed = fixer.fixAdditionalProperties(schema);
 
-      assert.strictEqual(fixed.additionalProperties, false);
+      expect(fixed.additionalProperties).toBe(false);
     });
 
     it('should recursively fix nested schemas', () => {
@@ -313,8 +311,8 @@ describe('Fixer', () => {
 
       const fixed = fixer.fixAdditionalProperties(schema);
 
-      assert.strictEqual(fixed.additionalProperties, false);
-      assert.strictEqual(fixed.properties.nested.additionalProperties, false);
+      expect(fixed.additionalProperties).toBe(false);
+      expect(fixed.properties.nested.additionalProperties).toBe(false);
     });
   });
 
@@ -330,9 +328,9 @@ describe('Fixer', () => {
 
       const fixed = fixer.fixRequiredFields(schema);
 
-      assert.ok(fixed.required);
-      assert.ok(fixed.required.includes('name'));
-      assert.ok(fixed.required.includes('age'));
+      expect(fixed.required).toBeTruthy();
+      expect(fixed.required).toContain('name');
+      expect(fixed.required).toContain('age');
     });
 
     it('should exclude optional fields', () => {
@@ -346,8 +344,8 @@ describe('Fixer', () => {
 
       const fixed = fixer.fixRequiredFields(schema);
 
-      assert.ok(fixed.required.includes('name'));
-      assert.ok(!fixed.required.includes('nickname'), 'Should not include optional field');
+      expect(fixed.required).toContain('name');
+      expect(fixed.required).not.toContain('nickname');
     });
   });
 
@@ -360,8 +358,8 @@ describe('Fixer', () => {
 
       const previews = fixer.previewFixes(issues);
 
-      assert.strictEqual(previews[0].willApply, true);
-      assert.strictEqual(previews[1].willApply, false);
+      expect(previews[0].willApply).toBe(true);
+      expect(previews[1].willApply).toBe(false);
     });
   });
 });
