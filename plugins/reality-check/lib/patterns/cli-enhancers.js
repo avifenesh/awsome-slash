@@ -5,10 +5,7 @@
  * All tools are user-installed globally - zero npm dependencies for this module.
  * Functions gracefully degrade when tools are not available.
  *
- * Supported tools:
- * - jscpd: Duplicate code detection
- * - madge: Circular dependency detection
- * - escomplex: Cyclomatic complexity analysis
+ * Supported languages: javascript, typescript, python, rust, go
  *
  * @module patterns/cli-enhancers
  * @author Avi Fenesh
@@ -17,28 +14,83 @@
 
 const { execSync } = require('child_process');
 const path = require('path');
+const fs = require('fs');
+const { escapeDoubleQuotes } = require('../utils/shell-escape');
 
 /**
- * CLI tool definitions
+ * Cache for tool availability (per-repo)
+ * Key: repoPath, Value: { tools: {...}, languages: [...], timestamp: Date }
+ */
+const toolCache = new Map();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Supported languages (must match slop-patterns.js)
+ */
+const SUPPORTED_LANGUAGES = ['javascript', 'typescript', 'python', 'rust', 'go'];
+
+/**
+ * CLI tool definitions organized by language
+ * Only includes tools for supported languages
  */
 const CLI_TOOLS = {
+  // Cross-language tools
   jscpd: {
     name: 'jscpd',
     description: 'Copy/paste detector for code duplication',
     checkCommand: 'jscpd --version',
-    installHint: 'npm install -g jscpd'
+    installHint: 'npm install -g jscpd',
+    languages: ['javascript', 'typescript', 'python', 'go', 'rust']
   },
+
+  // JavaScript/TypeScript tools
   madge: {
     name: 'madge',
     description: 'Circular dependency detector',
     checkCommand: 'madge --version',
-    installHint: 'npm install -g madge'
+    installHint: 'npm install -g madge',
+    languages: ['javascript', 'typescript']
   },
   escomplex: {
     name: 'escomplex',
     description: 'Cyclomatic complexity analyzer',
     checkCommand: 'escomplex --version',
-    installHint: 'npm install -g escomplex'
+    installHint: 'npm install -g escomplex',
+    languages: ['javascript']
+  },
+
+  // Python tools
+  pylint: {
+    name: 'pylint',
+    description: 'Python linter with complexity analysis',
+    checkCommand: 'pylint --version',
+    installHint: 'pip install pylint',
+    languages: ['python']
+  },
+  radon: {
+    name: 'radon',
+    description: 'Python complexity and maintainability metrics',
+    checkCommand: 'radon --version',
+    installHint: 'pip install radon',
+    languages: ['python']
+  },
+
+  // Go tools
+  golangci_lint: {
+    name: 'golangci-lint',
+    description: 'Go linters aggregator with complexity checks',
+    checkCommand: 'golangci-lint --version',
+    installHint: 'go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest',
+    languages: ['go']
+  },
+
+  // Rust tools
+  clippy: {
+    name: 'cargo-clippy',
+    description: 'Rust linter with code smell detection',
+    checkCommand: 'cargo clippy --version',
+    installHint: 'rustup component add clippy',
+    languages: ['rust']
   }
 };
 
@@ -62,16 +114,213 @@ function isToolAvailable(command) {
 }
 
 /**
- * Detect which CLI tools are available on the system
- *
- * @returns {Object} Available tools { jscpd: boolean, madge: boolean, escomplex: boolean }
+ * Get cache key for a repo
+ * @param {string} repoPath - Repository root path
+ * @returns {string} Cache key
  */
-function detectAvailableTools() {
-  return {
-    jscpd: isToolAvailable(CLI_TOOLS.jscpd.checkCommand),
-    madge: isToolAvailable(CLI_TOOLS.madge.checkCommand),
-    escomplex: isToolAvailable(CLI_TOOLS.escomplex.checkCommand)
+function getCacheKey(repoPath) {
+  return path.resolve(repoPath);
+}
+
+/**
+ * Check if cache is valid
+ * @param {Object} cacheEntry - Cache entry
+ * @returns {boolean} True if cache is still valid
+ */
+function isCacheValid(cacheEntry) {
+  if (!cacheEntry) return false;
+  return Date.now() - cacheEntry.timestamp < CACHE_TTL_MS;
+}
+
+/**
+ * Clear the tool cache (useful for testing)
+ */
+function clearCache() {
+  toolCache.clear();
+}
+
+/**
+ * Detect primary language(s) of a repository based on file extensions and config files
+ *
+ * @param {string} repoPath - Repository root path
+ * @returns {string[]} Array of detected languages (only supported ones)
+ */
+function detectProjectLanguages(repoPath) {
+  const languages = new Set();
+
+  // Check for language-specific config files
+  const configIndicators = {
+    'package.json': ['javascript', 'typescript'],
+    'tsconfig.json': ['typescript'],
+    'requirements.txt': ['python'],
+    'setup.py': ['python'],
+    'pyproject.toml': ['python'],
+    'Pipfile': ['python'],
+    'go.mod': ['go'],
+    'go.sum': ['go'],
+    'Cargo.toml': ['rust']
   };
+
+  for (const [file, langs] of Object.entries(configIndicators)) {
+    if (fs.existsSync(path.join(repoPath, file))) {
+      langs.forEach(l => languages.add(l));
+    }
+  }
+
+  // If no config files found, scan for source files
+  if (languages.size === 0) {
+    const extensionMap = {
+      '.js': 'javascript',
+      '.jsx': 'javascript',
+      '.mjs': 'javascript',
+      '.cjs': 'javascript',
+      '.ts': 'typescript',
+      '.tsx': 'typescript',
+      '.py': 'python',
+      '.go': 'go',
+      '.rs': 'rust'
+    };
+
+    // Quick scan of top-level and src/ directories
+    const dirsToScan = [repoPath, path.join(repoPath, 'src'), path.join(repoPath, 'lib')];
+
+    for (const dir of dirsToScan) {
+      if (!fs.existsSync(dir)) continue;
+      try {
+        const files = fs.readdirSync(dir);
+        for (const file of files) {
+          const ext = path.extname(file).toLowerCase();
+          if (extensionMap[ext]) {
+            languages.add(extensionMap[ext]);
+          }
+        }
+      } catch {
+        // Directory not readable
+      }
+    }
+  }
+
+  // Filter to only supported languages
+  const result = Array.from(languages).filter(l => SUPPORTED_LANGUAGES.includes(l));
+
+  // Default to javascript if nothing detected
+  if (result.length === 0) {
+    result.push('javascript');
+  }
+
+  return result;
+}
+
+/**
+ * Get tools relevant for specific languages
+ *
+ * @param {string[]} languages - Array of language names
+ * @returns {Object} Filtered CLI_TOOLS for the specified languages
+ */
+function getToolsForLanguages(languages) {
+  const relevant = {};
+
+  for (const [toolName, tool] of Object.entries(CLI_TOOLS)) {
+    if (tool.languages.some(lang => languages.includes(lang))) {
+      relevant[toolName] = tool;
+    }
+  }
+
+  return relevant;
+}
+
+/**
+ * Detect which CLI tools are available on the system
+ * Uses cache when available
+ *
+ * @param {string[]} [languages] - Optional languages to filter tools for
+ * @param {string} [repoPath] - Optional repo path for caching
+ * @returns {Object} Object with tool names as keys and availability as boolean values
+ */
+function detectAvailableTools(languages = null, repoPath = null) {
+  // Check cache if repoPath provided
+  if (repoPath) {
+    const cacheKey = getCacheKey(repoPath);
+    const cached = toolCache.get(cacheKey);
+    if (isCacheValid(cached)) {
+      // Return cached tools filtered by languages if specified
+      if (languages) {
+        const relevantTools = getToolsForLanguages(languages);
+        const filtered = {};
+        for (const name of Object.keys(relevantTools)) {
+          filtered[name] = cached.tools[name] || false;
+        }
+        return filtered;
+      }
+      return { ...cached.tools };
+    }
+  }
+
+  // Get tools to check
+  const toolsToCheck = languages ? getToolsForLanguages(languages) : CLI_TOOLS;
+  const result = {};
+
+  for (const [toolName, tool] of Object.entries(toolsToCheck)) {
+    result[toolName] = isToolAvailable(tool.checkCommand);
+  }
+
+  // Update cache if repoPath provided
+  if (repoPath) {
+    const cacheKey = getCacheKey(repoPath);
+    const existing = toolCache.get(cacheKey) || {};
+    toolCache.set(cacheKey, {
+      tools: { ...existing.tools, ...result },
+      languages: languages || existing.languages || [],
+      timestamp: Date.now()
+    });
+  }
+
+  return result;
+}
+
+/**
+ * Get tool availability for a specific repo (with caching)
+ *
+ * @param {string} repoPath - Repository root path
+ * @param {Object} [options] - Options
+ * @param {boolean} [options.forceRefresh=false] - Force cache refresh
+ * @returns {{ available: Object, missing: string[], languages: string[] }} Tool availability info
+ */
+function getToolAvailabilityForRepo(repoPath, options = {}) {
+  const cacheKey = getCacheKey(repoPath);
+
+  // Check cache unless force refresh
+  if (!options.forceRefresh) {
+    const cached = toolCache.get(cacheKey);
+    if (isCacheValid(cached) && cached.languages && cached.languages.length > 0) {
+      const relevantTools = getToolsForLanguages(cached.languages);
+      const missing = Object.keys(relevantTools).filter(t => !cached.tools[t]);
+      return {
+        available: { ...cached.tools },
+        missing,
+        languages: [...cached.languages]
+      };
+    }
+  }
+
+  // Detect languages
+  const languages = detectProjectLanguages(repoPath);
+
+  // Detect tools for those languages
+  const available = detectAvailableTools(languages, repoPath);
+
+  // Find missing tools
+  const relevantTools = getToolsForLanguages(languages);
+  const missing = Object.keys(relevantTools).filter(t => !available[t]);
+
+  // Update cache
+  toolCache.set(cacheKey, {
+    tools: available,
+    languages,
+    timestamp: Date.now()
+  });
+
+  return { available, missing, languages };
 }
 
 /**
@@ -93,7 +342,10 @@ function runDuplicateDetection(repoPath, options = {}) {
 
   try {
     // Run jscpd with JSON output
-    const command = `jscpd "${repoPath}" --min-lines ${minLines} --min-tokens ${minTokens} --reporters json --output /dev/null --silent 2>&1`;
+    // Escape repoPath to prevent command injection
+    const outputPath = process.platform === 'win32' ? 'NUL' : '/dev/null';
+    const safeRepoPath = escapeDoubleQuotes(repoPath);
+    const command = `jscpd "${safeRepoPath}" --min-lines ${minLines} --min-tokens ${minTokens} --reporters json --output ${outputPath} --silent 2>&1`;
 
     const result = execSync(command, {
       stdio: 'pipe',
@@ -159,7 +411,6 @@ function runDependencyAnalysis(repoPath, options = {}) {
     ];
 
     for (const e of possibleEntries) {
-      const fs = require('fs');
       if (fs.existsSync(path.join(repoPath, e))) {
         entry = e;
         break;
@@ -174,7 +425,9 @@ function runDependencyAnalysis(repoPath, options = {}) {
 
   try {
     // Run madge with circular flag and JSON output
-    const command = `madge --circular --json "${entry}"`;
+    // Escape entry path to prevent command injection
+    const safeEntry = escapeDoubleQuotes(entry);
+    const command = `madge --circular --json "${safeEntry}"`;
 
     const result = execSync(command, {
       stdio: 'pipe',
@@ -221,7 +474,9 @@ function runComplexityAnalysis(repoPath, targetFiles, options = {}) {
     const filePath = path.isAbsolute(file) ? file : path.join(repoPath, file);
 
     try {
-      const command = `escomplex "${filePath}" --format json`;
+      // Escape file path to prevent command injection
+      const safeFilePath = escapeDoubleQuotes(filePath);
+      const command = `escomplex "${safeFilePath}" --format json`;
 
       const result = execSync(command, {
         stdio: 'pipe',
@@ -272,20 +527,32 @@ function runComplexityAnalysis(repoPath, targetFiles, options = {}) {
 }
 
 /**
- * Get user-friendly message about missing tools
+ * Get user-friendly message about missing tools (language-aware)
  *
  * @param {string[]} missingTools - Array of missing tool names
+ * @param {string[]} [languages] - Detected languages (for context in message)
  * @returns {string} Formatted message
  */
-function getMissingToolsMessage(missingTools) {
+function getMissingToolsMessage(missingTools, languages = null) {
   if (!missingTools || missingTools.length === 0) {
     return '';
   }
 
-  let message = '\n## Optional CLI Tools Not Found\n\n';
+  // Filter to only known tools
+  const validTools = missingTools.filter(t => CLI_TOOLS[t]);
+  if (validTools.length === 0) {
+    return '';
+  }
+
+  let message = '\n## Enhanced Analysis Available\n\n';
+
+  if (languages && languages.length > 0) {
+    message += `Detected project languages: ${languages.join(', ')}\n\n`;
+  }
+
   message += 'For deeper analysis, consider installing:\n\n';
 
-  for (const toolName of missingTools) {
+  for (const toolName of validTools) {
     const tool = CLI_TOOLS[toolName];
     if (tool) {
       message += `- **${tool.name}**: ${tool.description}\n`;
@@ -307,14 +574,29 @@ function getToolDefinitions() {
   return { ...CLI_TOOLS };
 }
 
+/**
+ * Get supported languages list
+ *
+ * @returns {string[]} Array of supported language names
+ */
+function getSupportedLanguages() {
+  return [...SUPPORTED_LANGUAGES];
+}
+
 module.exports = {
   detectAvailableTools,
+  detectProjectLanguages,
+  getToolsForLanguages,
+  getToolAvailabilityForRepo,
   runDuplicateDetection,
   runDependencyAnalysis,
   runComplexityAnalysis,
   getMissingToolsMessage,
   getToolDefinitions,
+  getSupportedLanguages,
+  clearCache,
   // Exported for testing
   isToolAvailable,
-  CLI_TOOLS
+  CLI_TOOLS,
+  SUPPORTED_LANGUAGES
 };

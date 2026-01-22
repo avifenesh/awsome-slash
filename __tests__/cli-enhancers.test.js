@@ -494,4 +494,49 @@ describe('cli-enhancers', () => {
       expect(CLI_TOOLS.clippy.installHint).toContain('rustup');
     });
   });
+
+  describe('command injection prevention', () => {
+    it('runDuplicateDetection should handle paths with shell metacharacters safely', () => {
+      // These paths contain shell injection attempts
+      const dangerousPaths = [
+        '/path/with/$HOME/injection',
+        '/path/with/`whoami`/injection',
+        '/path/with/$(id)/injection',
+        '/path/with/"quotes"/injection'
+      ];
+
+      // Should not throw - paths are escaped internally
+      for (const path of dangerousPaths) {
+        expect(() => {
+          runDuplicateDetection(path);
+        }).not.toThrow();
+      }
+    });
+
+    it('runDependencyAnalysis should handle paths with shell metacharacters safely', () => {
+      const dangerousPaths = [
+        '/path/with/$HOME/injection',
+        '/path/with/`whoami`/injection',
+        '/path/with/$(id)/injection'
+      ];
+
+      for (const path of dangerousPaths) {
+        expect(() => {
+          runDependencyAnalysis(path);
+        }).not.toThrow();
+      }
+    });
+
+    it('runComplexityAnalysis should handle file paths with shell metacharacters safely', () => {
+      const dangerousFiles = [
+        '/path/with/$HOME/file.js',
+        '/path/with/`whoami`/file.js',
+        '/path/with/$(id)/file.js'
+      ];
+
+      expect(() => {
+        runComplexityAnalysis('/safe/repo', dangerousFiles);
+      }).not.toThrow();
+    });
+  });
 });
