@@ -37,12 +37,6 @@ const crossPlatformPatterns = {
     issue: 'Hardcoded .claude/ directory',
     fix: 'Use ${STATE_DIR}/ placeholder or getStateDir()'
   },
-  claude_plugin_root: {
-    pattern: /\$\{CLAUDE_PLUGIN_ROOT\}/,
-    certainty: 'MEDIUM',
-    issue: 'Uses ${CLAUDE_PLUGIN_ROOT}',
-    fix: 'Ensure adapters/*/install.sh handles path substitution'
-  },
   claude_md_reference: {
     pattern: /CLAUDE\.md/i,
     certainty: 'MEDIUM',
