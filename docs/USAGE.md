@@ -47,7 +47,7 @@ Complete guide to using awesome-slash commands with real-world examples.
 
 ### `/deslop-around`
 
-Remove debugging code, old TODOs, and AI slop from your codebase.
+Remove debugging code, old TODOs, and AI slop from your codebase with a 3-phase detection pipeline.
 
 ```bash
 /deslop-around                    # Report mode (safe, no changes)
@@ -55,11 +55,30 @@ Remove debugging code, old TODOs, and AI slop from your codebase.
 /deslop-around apply src/ 10      # Fix 10 issues in src/ only
 ```
 
+**Architecture:**
+- **Phase 1** - Built-in regex patterns (HIGH certainty) - always runs
+- **Phase 2** - Multi-pass analyzers (MEDIUM certainty) - context-aware
+- **Phase 3** - Optional CLI tools (LOW certainty) - graceful degradation
+  - JavaScript/TypeScript: jscpd, madge, escomplex
+  - Python: pylint, radon
+  - Go: golangci-lint
+  - Rust: clippy
+
+**Thoroughness levels:**
+- `quick` - Phase 1 only (fastest)
+- `normal` - Phase 1 + Phase 2 (default, recommended)
+- `deep` - All phases if tools available (most thorough)
+
 **Detects:**
 - Console debugging (`console.log`, `print()`, `dbg!()`)
 - Old TODOs and commented code
 - Placeholder text, magic numbers
 - Empty catch blocks, disabled linters
+- Placeholder functions
+- Excessive documentation
+- Phantom references
+- Buzzword inflation
+- Code smells and over-engineering patterns
 
 ---
 

@@ -152,13 +152,27 @@ Ship your code from commit to production with full validation and state integrat
 
 ### `/deslop-around` - AI Slop Cleanup
 
-Remove debugging code, old TODOs, and AI slop from your codebase.
+Remove debugging code, old TODOs, and AI slop from your codebase with a 3-phase detection pipeline.
 
 ```bash
 /deslop-around                    # Report mode - analyze only
 /deslop-around apply              # Apply fixes with verification
 /deslop-around apply src/ 10      # Fix up to 10 issues in src/
 ```
+
+**Architecture:**
+- **Phase 1** - Built-in regex patterns (HIGH certainty)
+- **Phase 2** - Multi-pass analyzers (MEDIUM certainty)
+- **Phase 3** - Optional CLI tools (LOW certainty, graceful degradation)
+  - JavaScript/TypeScript: jscpd, madge, escomplex
+  - Python: pylint, radon
+  - Go: golangci-lint
+  - Rust: clippy
+
+**Thoroughness levels:**
+- `quick` - Phase 1 only (fastest)
+- `normal` - Phase 1 + Phase 2 (default)
+- `deep` - Phase 1 + Phase 2 + Phase 3 (if tools available)
 
 **Detects:**
 - Console debugging (`console.log`, `print()`, `dbg!()`)
@@ -170,6 +184,7 @@ Remove debugging code, old TODOs, and AI slop from your codebase.
 - Phantom references (issue/PR mentions, file path references in comments)
 - Infrastructure components configured but never used (unused DB clients, caches, API clients)
 - Code smells: boolean blindness, message chains, mutable globals, dead code, shotgun surgery
+- Buzzword inflation (quality claims without evidence)
 
 ---
 
