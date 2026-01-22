@@ -60,7 +60,7 @@ fi
 2. Minimal diffs - don't reformat unrelated code
 3. Prefer deletion over invention
 4. Do NOT add dependencies or new abstractions
-5. Respect repo conventions (check CLAUDE.md if present)
+5. Respect repo conventions (check CLAUDE.md or AGENTS.md if present)
 
 ## Ignore Zones
 
