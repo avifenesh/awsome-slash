@@ -2,6 +2,14 @@
 
 Detailed agent responsibilities and tool requirements for /next-task and /ship workflows.
 
+**Related Checklists:**
+- [New Agent Checklist](../checklists/new-agent.md)
+- [New Command Checklist](../checklists/new-command.md)
+
+**Best Practices:**
+- [Multi-Agent Systems](./MULTI-AGENT-SYSTEMS-REFERENCE.md)
+- [Prompt Engineering](./PROMPT-ENGINEERING-REFERENCE.md)
+
 ## /next-task - Master Workflow Orchestrator
 
 The main orchestrator **MUST spawn these agents in order**:
@@ -15,7 +23,7 @@ The main orchestrator **MUST spawn these agents in order**:
 | 5 | `planning-agent` | opus | Read, Grep, Glob, Bash(git:*), Task | Design implementation plan |
 | 6 | **USER APPROVAL** | - | - | Last human touchpoint |
 | 7 | `implementation-agent` | opus | Read, Write, Edit, Bash | Execute plan |
-| 8 | `deslop-work` | sonnet | Read, Grep, Task(simple-fixer) | Clean AI slop |
+| 8 | `deslop-work` | sonnet | Read, Grep, Edit, Bash(git:*) | Clean AI slop (uses pipeline.js) |
 | 8 | `test-coverage-checker` | sonnet | Bash(npm:*), Read, Grep | Validate test coverage |
 | 9 | `review-orchestrator` | opus | Task(*-reviewer) | Multi-agent review loop |
 | 10 | `delivery-validator` | sonnet | Bash(npm:*), Read | Validate completion |
@@ -85,3 +93,35 @@ The main orchestrator **MUST spawn these agents in order**:
 | worktree-manager | Bash(git:*) | Write, Edit |
 | ci-monitor | Bash(gh:*), Read, Task | Write, Edit |
 | simple-fixer | Read, Edit, Bash(git:*) | Task |
+| deslop-work | Read, Grep, Edit, Bash(git:*) | Task |
+
+---
+
+## Quality Gates (Pre-Review)
+
+Agents that run in parallel after implementation, before review:
+
+| Agent | Purpose | Key Files |
+|-------|---------|-----------|
+| `deslop-work` | Clean AI slop from committed work | `lib/patterns/pipeline.js` |
+| `test-coverage-checker` | Validate new code has tests | Advisory only |
+
+**deslop-work** uses the 3-phase pipeline:
+- Phase 1: Regex patterns (HIGH certainty, auto-fix)
+- Phase 2: Multi-pass analyzers (MEDIUM certainty, verify)
+- Phase 3: CLI tools (LOW certainty, advisory)
+
+---
+
+## State Files
+
+| File | Location | Purpose |
+|------|----------|---------|
+| `tasks.json` | `{state-dir}/` | Active worktree/task registry |
+| `flow.json` | `{state-dir}/` (worktree) | Workflow progress |
+| `preference.json` | `{state-dir}/sources/` | Cached task source |
+
+State directory varies by platform:
+- Claude Code: `.claude/`
+- OpenCode: `.opencode/`
+- Codex CLI: `.codex/`

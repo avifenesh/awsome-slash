@@ -2,6 +2,8 @@
 
 Reference this document when preparing a release.
 
+**Quick Reference:** [checklists/release.md](../checklists/release.md) - condensed version with just the file updates.
+
 ## Automated Release (Recommended)
 
 Releases are automated via GitHub Actions. The workflow handles:
