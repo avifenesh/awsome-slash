@@ -30,7 +30,8 @@ If adding a NEW plugin (not just updating):
 - [ ] `bin/cli.js` → Add plugin name to `plugins` array (~line 138)
 - [ ] `bin/cli.js` → Update console output message (~line 155)
 - [ ] `docs/INSTALLATION.md` → Add `/plugin install <name>@awesome-slash` commands
-- [ ] `.claude-plugin/marketplace.json` → Add new plugin entry
+- [ ] `.claude-plugin/marketplace.json` → Add new plugin entry to `plugins` array
+- [ ] `plugins/<name>/.claude-plugin/plugin.json` → Create plugin manifest
 
 ## New MCP Tool Checklist
 
@@ -39,6 +40,7 @@ If adding a NEW MCP tool:
 - [ ] `mcp-server/index.js` → Add tool to TOOLS array
 - [ ] `mcp-server/index.js` → Add handler to toolHandlers
 - [ ] `bin/cli.js` → Update MCP tools output messages (OpenCode + Codex)
+- [ ] `.claude-plugin/marketplace.json` → Add tool to `mcpServer.tools` array
 - [ ] `README.md` → Add to Cross-Platform Integration table
 - [ ] `docs/CROSS_PLATFORM.md` → Document tool usage
 

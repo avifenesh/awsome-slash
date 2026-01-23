@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.8.3] - 2025-01-23
+
+### Fixed
+- **Marketplace** - Added missing `enhance` plugin to marketplace.json plugins array
+- **Marketplace** - Added `enhance_analyze` to marketplace.json mcpServer.tools array
+- **Release Checklist** - Added marketplace.json updates to New Plugin and New MCP Tool checklists
+
 ## [2.8.2] - 2025-01-23
 
 ### Added
