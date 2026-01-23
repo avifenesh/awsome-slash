@@ -121,7 +121,7 @@ const slopPatterns = {
    */
   console_debugging: {
     pattern: /console\.(log|debug|info|warn)\(/,
-    exclude: ['*.test.*', '*.spec.*', '*.config.*'],
+    exclude: ['*.test.*', '*.spec.*', '*.config.*', 'bin/**', '**/bin/**', 'cli.js', '**/cli.js'],
     severity: 'medium',
     autoFix: 'remove',
     language: 'javascript',
@@ -184,7 +184,7 @@ const slopPatterns = {
    */
   placeholder_text: {
     pattern: /(lorem ipsum|test test test|asdf|foo bar baz|placeholder|replace this|todo: implement)/i,
-    exclude: ['*.test.*', '*.spec.*', 'README.*', '*.md'],
+    exclude: ['*.test.*', '*.spec.*', 'README.*', '*.md', '**/slop-patterns.js', '**/slop-analyzers.js'],
     severity: 'high',
     autoFix: 'flag',
     language: null,
@@ -201,12 +201,15 @@ const slopPatterns = {
    * Detects functions returning hardcoded 0, true, false, null, undefined, [], {}
    */
   placeholder_stub_returns_js: {
-    pattern: /return\s+(?:0|true|false|null|undefined|\[\]|\{\})\s*;?\s*$/m,
+    // Disabled: too many false positives with simple regex
+    // Needs multi-pass analysis to detect actual stub functions (single return as only statement)
+    pattern: null,
     exclude: ['*.test.*', '*.spec.*', '*.config.*'],
-    severity: 'high',
+    severity: 'low',
     autoFix: 'flag',
     language: 'javascript',
-    description: 'Stub return value (0, true, false, null, undefined, [], {})'
+    description: 'Stub function returning hardcoded value (requires multi-pass analysis)',
+    requiresMultiPass: true
   },
 
   /**
@@ -560,7 +563,7 @@ const slopPatterns = {
    */
   process_exit: {
     pattern: /process\.exit\(/,
-    exclude: ['*.test.*', 'cli.js', 'index.js', 'bin/*'],
+    exclude: ['*.test.*', 'cli.js', 'index.js', 'bin/**', '**/bin/**', '**/slop-patterns.js'],
     severity: 'high',
     autoFix: 'flag',
     language: 'javascript',
@@ -630,50 +633,6 @@ const slopPatterns = {
     autoFix: 'flag',
     language: null,
     description: 'File path references in comments that may be outdated'
-  },
-
-  // ============================================================================
-  // Generic Naming Detection
-  // ============================================================================
-
-  /** JavaScript/TypeScript: Generic variable names */
-  generic_naming_js: {
-    pattern: /\b(?:const|let|var)\s+(data|result|item|temp|value|output|response|obj|ret|res|val|arr|str|num|buf|ctx|cfg|opts|args|params)\s*[=:]/i,
-    exclude: ['*.test.*', '*.spec.*', '**/test/**', '**/tests/**'],
-    severity: 'low',
-    autoFix: 'flag',
-    language: 'javascript',
-    description: 'Generic variable name that could be more descriptive (e.g., "data" -> "userData")'
-  },
-
-  /** Python: Generic variable names */
-  generic_naming_py: {
-    pattern: /^(\s*)(?!.*\bfor\s+\w+\s+in\b)(data|result|item|temp|value|output|response|obj|ret|res|val|arr|ctx|cfg|opts|args|params)\s*[:=]/im,
-    exclude: ['*test*.py', '**/test_*.py', '**/tests/**', 'conftest.py'],
-    severity: 'low',
-    autoFix: 'flag',
-    language: 'python',
-    description: 'Generic variable name that could be more descriptive'
-  },
-
-  /** Rust: Generic variable names */
-  generic_naming_rust: {
-    pattern: /\blet\s+(?:mut\s+)?(data|result|item|temp|value|output|response|obj|ret|res|val|buf|ctx|cfg|opts|args)\s*[=:]/i,
-    exclude: ['*_test.rs', '*_tests.rs', '**/tests/**'],
-    severity: 'low',
-    autoFix: 'flag',
-    language: 'rust',
-    description: 'Generic variable name that could be more descriptive'
-  },
-
-  /** Go: Generic variable names */
-  generic_naming_go: {
-    pattern: /\b(data|result|item|temp|value|output|response|obj|ret|res|val|buf|ctx|cfg|opts|args)\s*:=/i,
-    exclude: ['*_test.go', '**/tests/**', '**/testdata/**'],
-    severity: 'low',
-    autoFix: 'flag',
-    language: 'go',
-    description: 'Generic variable name that could be more descriptive'
   },
 
   // ============================================================================

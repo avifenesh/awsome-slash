@@ -23,43 +23,173 @@
 function analyzeDocCodeRatio(content, options = {}) {
   const minFunctionLines = options.minFunctionLines || 3;
   const maxRatio = options.maxRatio || 3.0;
+  const lang = detectLanguage(options.filePath || '.js');
   const violations = [];
 
-  // Regex to match JSDoc block followed by any function declaration
-  // Captures: /** ... */ then finds the next opening brace
-  // Handles: function name(), async function name(), export function, const name = () =>
-  const jsdocPattern = /\/\*\*([\s\S]*?)\*\/\s*(export\s+)?(async\s+)?(?:function\s+\w+\s*\([^)]*\)|const\s+\w+\s*=\s*(?:async\s*)?\([^)]*\)\s*=>)/g;
+  const config = getDocCodeConfig(lang);
+  if (!config) return violations;
 
-  let match;
-  while ((match = jsdocPattern.exec(content)) !== null) {
-    const jsdocBlock = match[1];
-    const jsdocLines = countNonEmptyLines(jsdocBlock);
+  if (config.useBraces) {
+    return analyzeDocCodeBraceLanguage(content, lang, config, minFunctionLines, maxRatio);
+  } else {
+    return analyzeDocCodePython(content, minFunctionLines, maxRatio);
+  }
+}
 
-    // Find the opening brace after the match
-    const afterMatch = match.index + match[0].length;
-    const openBraceOffset = content.substring(afterMatch).search(/\{/);
-    if (openBraceOffset === -1) continue; // No opening brace found
+/**
+ * Get language-specific configuration for doc/code ratio detection
+ */
+function getDocCodeConfig(lang) {
+  const configs = {
+    js: {
+      useBraces: true,
+      // JSDoc: /** ... */ followed by function
+      docPatterns: [
+        /\/\*\*([\s\S]*?)\*\/\s*(export\s+)?(async\s+)?(?:function\s+(\w+)\s*\([^)]*\)|(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>)/g,
+      ],
+    },
+    java: {
+      useBraces: true,
+      // Javadoc: /** ... */ followed by method
+      docPatterns: [
+        /\/\*\*([\s\S]*?)\*\/\s*(?:@\w+\s*)*(?:public|private|protected)?\s*(?:static\s+)?(?:final\s+)?(?:\w+(?:<[^>]*>)?)\s+(\w+)\s*\([^)]*\)/g,
+      ],
+    },
+    rust: {
+      useBraces: true,
+      // Rust doc comments: /// or //! lines before fn
+      docPatterns: [
+        /((?:^\s*\/\/[\/!].*\n)+)\s*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)/gm,
+      ],
+    },
+    go: {
+      useBraces: true,
+      // Go doc comments: // lines before func
+      docPatterns: [
+        /((?:^\s*\/\/.*\n)+)\s*func\s+(?:\([^)]+\)\s+)?(\w+)/gm,
+      ],
+    },
+    python: {
+      useBraces: false,
+    },
+  };
+  return configs[lang];
+}
 
-    const funcStart = afterMatch + openBraceOffset;
-    const closingBraceIndex = findMatchingBrace(content, funcStart);
+/**
+ * Analyze doc/code ratio for brace-delimited languages (JS, Java, Rust, Go)
+ */
+function analyzeDocCodeBraceLanguage(content, lang, config, minFunctionLines, maxRatio) {
+  const violations = [];
 
-    if (closingBraceIndex === -1) continue; // Parsing failed, skip
+  for (const pattern of config.docPatterns) {
+    let match;
+    pattern.lastIndex = 0;
 
-    const funcBody = content.substring(funcStart + 1, closingBraceIndex);
-    const funcLines = countNonEmptyLines(funcBody);
+    while ((match = pattern.exec(content)) !== null) {
+      const docBlock = match[1];
+      const docLines = countNonEmptyLines(docBlock);
 
-    // Skip if function is too small
-    if (funcLines < minFunctionLines) continue;
+      // Find the opening brace after the match
+      const afterMatch = match.index + match[0].length;
+      const openBraceOffset = content.substring(afterMatch).search(/\{/);
+      if (openBraceOffset === -1) continue;
 
-    const ratio = jsdocLines / funcLines;
+      const funcStart = afterMatch + openBraceOffset;
+      const closingBraceIndex = findMatchingBrace(content, funcStart);
+      if (closingBraceIndex === -1) continue;
+
+      const funcBody = content.substring(funcStart + 1, closingBraceIndex);
+      const funcLines = countNonEmptyLines(funcBody);
+
+      if (funcLines < minFunctionLines) continue;
+
+      const ratio = docLines / funcLines;
+      if (ratio > maxRatio) {
+        const lineNumber = countNewlines(content.substring(0, match.index)) + 1;
+        const funcName = match[4] || match[5] || 'unknown';
+        violations.push({
+          line: lineNumber,
+          docLines: docLines,
+          codeLines: funcLines,
+          ratio: parseFloat(ratio.toFixed(2)),
+          functionName: funcName
+        });
+      }
+    }
+  }
+
+  return violations;
+}
+
+/**
+ * Analyze doc/code ratio for Python (indentation-based with docstrings)
+ */
+function analyzeDocCodePython(content, minFunctionLines, maxRatio) {
+  const violations = [];
+  const lines = content.split('\n');
+
+  const defPattern = /^(\s*)(?:async\s+)?def\s+(\w+)\s*\([^)]*\)\s*(?:->.*)?:\s*$/;
+
+  for (let i = 0; i < lines.length; i++) {
+    const match = defPattern.exec(lines[i]);
+    if (!match) continue;
+
+    const funcIndent = match[1].length;
+    const funcName = match[2];
+
+    // Look for docstring right after def
+    let docLines = 0;
+    let docEndLine = i + 1;
+    if (docEndLine < lines.length) {
+      const nextLine = lines[docEndLine].trim();
+      if (nextLine.startsWith('"""') || nextLine.startsWith("'''")) {
+        const quote = nextLine.substring(0, 3);
+        // Single-line docstring?
+        if (nextLine.length > 6 && nextLine.endsWith(quote)) {
+          docLines = 1;
+          docEndLine++;
+        } else {
+          // Multi-line docstring
+          docLines = 1;
+          docEndLine++;
+          while (docEndLine < lines.length) {
+            docLines++;
+            if (lines[docEndLine].includes(quote)) {
+              docEndLine++;
+              break;
+            }
+            docEndLine++;
+          }
+        }
+      }
+    }
+
+    // Count function body lines (after docstring)
+    let codeLines = 0;
+    for (let j = docEndLine; j < lines.length; j++) {
+      const line = lines[j];
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      const lineIndent = line.length - line.trimStart().length;
+      if (lineIndent <= funcIndent && trimmed) break;
+
+      if (!trimmed.startsWith('#')) {
+        codeLines++;
+      }
+    }
+
+    if (codeLines < minFunctionLines) continue;
+
+    const ratio = docLines / codeLines;
     if (ratio > maxRatio) {
-      // Line number is 1-indexed: count newlines before match + 1
-      const lineNumber = countNewlines(content.substring(0, match.index)) + 1;
       violations.push({
-        line: lineNumber,
-        docLines: jsdocLines,
-        codeLines: funcLines,
-        ratio: parseFloat(ratio.toFixed(2))
+        line: i + 1,
+        docLines: docLines,
+        codeLines: codeLines,
+        ratio: parseFloat(ratio.toFixed(2)),
+        functionName: funcName
       });
     }
   }
@@ -311,7 +441,10 @@ const ENTRY_POINTS = [
   'lib/index.js', 'lib/index.ts', 'main.js', 'main.ts',
   'lib.rs', 'src/lib.rs',
   'main.go',
-  '__init__.py', 'src/__init__.py'
+  '__init__.py', 'src/__init__.py',
+  'Main.java', 'src/Main.java', 'src/main/java/Main.java',
+  'Application.java', 'src/main/java/Application.java',
+  'App.java', 'src/main/java/App.java'
 ];
 
 /**
@@ -338,6 +471,10 @@ const EXPORT_PATTERNS = {
     /__all__\s*=\s*\[/g,
     /^def\s+(?!_)\w+\s*\(/gm,    // Public functions (excludes _private)
     /^class\s+[A-Z]\w*[\s:(]/gm
+  ],
+  java: [
+    /^\s*public\s+(?:static\s+)?(?:final\s+)?(?:class|interface|enum)\s+\w+/gm,
+    /^\s*public\s+(?:static\s+)?(?:final\s+)?(?:synchronized\s+)?(?:\w+(?:<[^>]*>)?)\s+\w+\s*\(/gm
   ]
 };
 
@@ -348,7 +485,8 @@ const SOURCE_EXTENSIONS = {
   js: ['.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs'],
   rust: ['.rs'],
   go: ['.go'],
-  python: ['.py']
+  python: ['.py'],
+  java: ['.java']
 };
 
 /**
@@ -359,6 +497,110 @@ const EXCLUDE_DIRS = [
   '.git', '.svn', '.hg', '__pycache__', '.pytest_cache',
   'coverage', '.nyc_output', '.next', '.nuxt', '.cache'
 ];
+
+/**
+ * Parse .gitignore file and return a matcher function
+ * @param {string} repoPath - Repository root path
+ * @param {Object} fs - File system module
+ * @param {Object} path - Path module
+ * @returns {Function|null} Matcher function or null if no .gitignore
+ */
+function parseGitignore(repoPath, fs, path) {
+  const gitignorePath = path.join(repoPath, '.gitignore');
+
+  let content;
+  try {
+    content = fs.readFileSync(gitignorePath, 'utf8');
+  } catch {
+    return null; // No .gitignore file
+  }
+
+  const patterns = content
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line && !line.startsWith('#'))
+    .map(rawPattern => {
+      let pattern = rawPattern;
+
+      // Track if pattern is negated
+      const negated = pattern.startsWith('!');
+      if (negated) pattern = pattern.slice(1);
+
+      // Track if pattern is directory-only
+      const dirOnly = pattern.endsWith('/');
+      if (dirOnly) pattern = pattern.slice(0, -1);
+
+      // Track if pattern is anchored (explicit / at start)
+      const anchored = pattern.startsWith('/');
+      if (anchored) pattern = pattern.slice(1);
+
+      // Check if pattern starts with ** (matches any leading path)
+      const matchesAnywhere = pattern.startsWith('**/');
+
+      // Convert gitignore pattern to regex
+      // Step 1: Replace globstar patterns with placeholders (before escaping)
+      let regexStr = pattern
+        .replace(/^\*\*\//, '\x00LEADING\x00')
+        .replace(/\/\*\*$/, '\x00TRAILING\x00')
+        .replace(/\*\*\//g, '\x00ANYPATH\x00')
+        .replace(/\/\*\*/g, '\x00ANYPATH2\x00')
+        .replace(/\*\*/g, '\x00STAR2\x00');
+
+      // Step 2: Escape special regex chars (except * and ?) and handle remaining globs
+      regexStr = regexStr
+        .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+        .replace(/\*/g, '[^/]*')
+        .replace(/\?/g, '[^/]');
+
+      // Step 3: Restore globstar patterns with proper regex
+      regexStr = regexStr
+        .replace(/\x00LEADING\x00/g, '(?:.*/)?')
+        .replace(/\x00TRAILING\x00/g, '(?:/.*)?')
+        .replace(/\x00ANYPATH\x00/g, '(?:.*/)?')
+        .replace(/\x00ANYPATH2\x00/g, '(?:/.*)?')
+        .replace(/\x00STAR2\x00/g, '.*');
+
+      // Pattern matching rules:
+      // - Anchored (starts with /): match from root only
+      // - Starts with **: match anywhere (leading ** already handled in regex)
+      // - Contains /: match relative to root
+      // - Simple name: match anywhere in path
+      if (anchored) {
+        regexStr = '^' + regexStr;
+      } else if (matchesAnywhere) {
+        // Leading ** already allows matching anywhere via (?:.*/)? prefix
+        regexStr = '^' + regexStr;
+      } else if (pattern.includes('/')) {
+        regexStr = '^' + regexStr;
+      } else {
+        // Simple patterns match anywhere
+        regexStr = '(?:^|/)' + regexStr;
+      }
+
+      return {
+        regex: new RegExp(regexStr + '(?:$|/)'),
+        negated,
+        dirOnly
+      };
+    });
+
+  return function isIgnored(relativePath, isDirectory = false) {
+    // Normalize path separators
+    const normalized = relativePath.replace(/\\/g, '/');
+    let ignored = false;
+
+    for (const { regex, negated, dirOnly } of patterns) {
+      // Skip directory-only patterns for files
+      if (dirOnly && !isDirectory) continue;
+
+      if (regex.test(normalized)) {
+        ignored = !negated;
+      }
+    }
+
+    return ignored;
+  };
+}
 
 /**
  * Detect language from file extension
@@ -430,6 +672,7 @@ function isTestFile(filePath) {
  * @param {Function} options.stat - Stat function (for testing)
  * @param {number} options.maxFiles - Maximum files to count (default 10000)
  * @param {boolean} options.includeTests - Include test files (default false)
+ * @param {boolean} options.respectGitignore - Respect .gitignore patterns (default true)
  * @returns {Object} { count, files[] }
  */
 function countSourceFiles(repoPath, options = {}) {
@@ -437,11 +680,15 @@ function countSourceFiles(repoPath, options = {}) {
   const path = options.path || require('path');
   const maxFiles = options.maxFiles || 10000;
   const includeTests = options.includeTests || false;
+  const respectGitignore = options.respectGitignore !== false;
 
   const files = [];
   let count = 0;
   // Pre-compute extension list for performance (avoid recalculation in loop)
   const allExts = Object.values(SOURCE_EXTENSIONS).flat();
+
+  // Parse .gitignore if enabled
+  const isIgnored = respectGitignore ? parseGitignore(repoPath, fs, path) : null;
 
   function walk(dir, depth = 0) {
     if (count >= maxFiles) return;
@@ -461,6 +708,9 @@ function countSourceFiles(repoPath, options = {}) {
       const relativePath = path.relative(repoPath, fullPath);
 
       if (shouldExclude(relativePath)) continue;
+
+      // Check gitignore
+      if (isIgnored && isIgnored(relativePath, entry.isDirectory())) continue;
 
       if (entry.isDirectory()) {
         walk(fullPath, depth + 1);
@@ -826,6 +1076,16 @@ const INSTANTIATION_PATTERNS = {
     /let\s+(?:mut\s+)?(\w+)\s*=\s*(\w+Builder)::new\(\).*\.build\(\)/g,
     // From/into patterns: let client = Client::from()
     /let\s+(?:mut\s+)?(\w+)\s*=\s*(\w*(?:Client|Connection|Pool|Service|Provider|Manager|Factory|Repository|Gateway|Adapter|Handler|Broker|Queue|Cache|Store|Transport|Channel|Socket|Server|Database))::from/g
+  ],
+  java: [
+    // Field/local var: Client client = new Client()
+    /(?:\w+(?:<[^>]*>)?)\s+(\w+)\s*=\s*new\s+(\w+(?:Client|Connection|Pool|Service|Provider|Manager|Factory|Repository|Gateway|Adapter|Handler|Broker|Queue|Cache|Store|Transport|Channel|Socket|Server|Database))(?:<[^>]*>)?\s*\(/g,
+    // Factory pattern: Client client = ClientFactory.create()
+    /(?:\w+(?:<[^>]*>)?)\s+(\w+)\s*=\s*(\w+(?:Factory|Builder))\.(?:create|build|get|new)\w*\(/g,
+    // Builder pattern: Client client = Client.builder().build()
+    /(?:\w+(?:<[^>]*>)?)\s+(\w+)\s*=\s*(\w+)\.builder\(\).*\.build\(\)/g,
+    // Spring/DI injection via constructor or field
+    /@(?:Autowired|Inject)\s+(?:private\s+)?(?:\w+(?:<[^>]*>)?)\s+(\w+)/g
   ]
 };
 
@@ -1454,6 +1714,12 @@ const TERMINATION_STATEMENTS = {
     /\bpanic!\s*\(/,
     /\bbreak\s*;/,
     /\bcontinue\s*;/
+  ],
+  java: [
+    /\breturn\s*(?:[^;]*)?;/,
+    /\bthrow\s+/,
+    /\bbreak\s*;/,
+    /\bcontinue\s*;/
   ]
 };
 
@@ -1519,6 +1785,23 @@ function analyzeDeadCode(content, options = {}) {
       continue;
     }
 
+    // Check for multi-line statements (unbalanced brackets)
+    // e.g., "throw new Error(" or "return [" continues on next lines
+    const countBrackets = (str) => {
+      const open = (str.match(/[\(\[\{]/g) || []).length;
+      const close = (str.match(/[\)\]\}]/g) || []).length;
+      return open - close;
+    };
+    let bracketBalance = countBrackets(trimmed);
+    if (bracketBalance > 0) {
+      // Statement continues on following lines - skip to where it ends
+      for (let k = i + 1; k < lineCount && bracketBalance > 0; k++) {
+        const contLine = lines[k].trim();
+        bracketBalance += countBrackets(contLine);
+        i = k; // Advance past continuation lines
+      }
+    }
+
     // Look for non-empty code after the termination (within same block)
     // Use different scope tracking for Python vs brace-based languages
     const isPython = lang === 'python';
@@ -1563,17 +1846,18 @@ function analyzeDeadCode(content, options = {}) {
         break;
       }
 
-      // Skip else/elif/except clauses (they're alternative paths, not dead code)
-      // Also handles "} else {" pattern where closing brace precedes else
-      if (/^(else\s*[:{]?|elif\s+|else\s+if\s+|except\s*[:(]|catch\s*\(|\}\s*else\s*)/.test(nextTrimmed)) {
+      // Skip else/elif/except/catch clauses (they're alternative paths, not dead code)
+      // Handles: "} else {", "} catch {", "} catch (e) {", "catch {" (modern JS without binding)
+      if (/^(else\s*[:{]?|elif\s+|else\s+if\s+|except\s*[:(]|catch\s*[({]|\}\s*else\s*|\}\s*catch\s*)/.test(nextTrimmed)) {
         break;
       }
 
       // Found potential dead code
       violations.push({
         line: j + 1, // 1-indexed
-        terminatedBy: `${terminationType} on line ${i + 1}`,
-        deadCode: nextTrimmed.substring(0, 50) + (nextTrimmed.length > 50 ? '...' : ''),
+        terminationType: terminationType,
+        terminationLine: i + 1,
+        content: nextTrimmed.substring(0, 50) + (nextTrimmed.length > 50 ? '...' : ''),
         severity: 'high'
       });
 
@@ -1730,6 +2014,222 @@ function analyzeShotgunSurgery(repoPath, options = {}) {
   }
 }
 
+// ============================================================================
+// Stub Function Detection
+// Detects functions that only return placeholder values without real logic
+// ============================================================================
+
+/**
+ * Analyze stub functions - functions that only return placeholder values
+ *
+ * A stub function is one where:
+ * - The body contains only a return statement (plus optional comments)
+ * - The return value is a placeholder: 0, null, undefined, true, false, [], {}, "", ''
+ *
+ * Higher certainty when TODO/FIXME comments are present.
+ *
+ * @param {string} content - File content to analyze
+ * @param {Object} options - Analysis options
+ * @param {string} [options.filePath] - File path for language detection
+ * @returns {Array<Object>} Array of violations: { line, functionName, returnValue, hasTodo, certainty }
+ */
+function analyzeStubFunctions(content, options = {}) {
+  const violations = [];
+  const lang = detectLanguage(options.filePath || '.js');
+
+  const langConfig = getStubFunctionConfig(lang);
+  if (!langConfig) return violations;
+
+  if (langConfig.useBraces) {
+    return analyzeStubFunctionsBraceLanguage(content, lang, langConfig);
+  } else {
+    return analyzeStubFunctionsPython(content);
+  }
+}
+
+/**
+ * Get language-specific configuration for stub detection
+ */
+function getStubFunctionConfig(lang) {
+  const configs = {
+    js: {
+      useBraces: true,
+      functionPatterns: [
+        /(?:async\s+)?function\s+(\w+)\s*\([^)]*\)\s*\{/g,
+        /(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s*)?\([^)]*\)\s*=>\s*\{/g,
+        /(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s+)?function\s*\([^)]*\)\s*\{/g,
+        /^\s*(?:async\s+)?(?!if\b|for\b|while\b|switch\b|catch\b|with\b|function\b)(\w+)\s*\([^)]*\)\s*\{/gm,
+      ],
+      stubReturnPattern: /^\s*return\s+(0|null|undefined|true|false|\[\]|\{\}|""|''|``)\s*;?\s*$/,
+      commentPatterns: [/^\s*\/\//, /^\s*\/\*/, /^\s*\*/, /^\s*\*\/$/],
+    },
+    rust: {
+      useBraces: true,
+      functionPatterns: [
+        /(?:pub\s+)?(?:async\s+)?fn\s+(\w+)\s*(?:<[^>]*>)?\s*\([^)]*\)(?:\s*->\s*[^{]+)?\s*\{/g,
+      ],
+      stubReturnPattern: /^\s*(?:return\s+)?(None|0|true|false|String::new\(\)|Vec::new\(\)|vec!\[\]|\(\)|""|Default::default\(\))\s*;?\s*$/,
+      stubMacroPattern: /^\s*(todo!\(\)|unimplemented!\(\)|panic!\([^)]*\))\s*;?\s*$/,
+      commentPatterns: [/^\s*\/\//, /^\s*\/\*/, /^\s*\*/, /^\s*\*\/$/],
+    },
+    java: {
+      useBraces: true,
+      functionPatterns: [
+        /(?:public|private|protected)?\s*(?:static\s+)?(?:final\s+)?(?:\w+(?:<[^>]*>)?)\s+(\w+)\s*\([^)]*\)\s*(?:throws\s+[^{]+)?\s*\{/g,
+      ],
+      stubReturnPattern: /^\s*return\s+(null|0|0L|0\.0|0\.0f|true|false|""|Collections\.emptyList\(\)|Collections\.emptyMap\(\)|Optional\.empty\(\))\s*;\s*$/,
+      throwStubPattern: /^\s*throw\s+new\s+(?:Unsupported(?:Operation)?Exception|NotImplementedException|IllegalStateException)\s*\([^)]*\)\s*;\s*$/,
+      commentPatterns: [/^\s*\/\//, /^\s*\/\*/, /^\s*\*/, /^\s*\*\/$/],
+    },
+    go: {
+      useBraces: true,
+      functionPatterns: [
+        /func\s+(?:\([^)]+\)\s+)?(\w+)\s*\([^)]*\)(?:\s*(?:\([^)]+\)|[^{]+))?\s*\{/g,
+      ],
+      stubReturnPattern: /^\s*return\s+(nil|0|""|false|true|\[\][a-zA-Z_]\w*\{\}|map\[[^\]]+\][a-zA-Z_]\w*\{\}|\&?[A-Z]\w*\{\})\s*$/,
+      panicPattern: /^\s*panic\s*\([^)]*\)\s*$/,
+      commentPatterns: [/^\s*\/\//],
+    },
+    python: {
+      useBraces: false,
+    },
+  };
+
+  return configs[lang];
+}
+
+/**
+ * Analyze brace-delimited languages (JS, Rust, Java, Go)
+ */
+function analyzeStubFunctionsBraceLanguage(content, lang, config) {
+  const violations = [];
+
+  for (const pattern of config.functionPatterns) {
+    let match;
+    pattern.lastIndex = 0;
+
+    while ((match = pattern.exec(content)) !== null) {
+      const funcName = match[1] || 'anonymous';
+      const funcStart = match.index + match[0].length - 1;
+
+      const closingBrace = findMatchingBrace(content, funcStart);
+      if (closingBrace === -1) continue;
+
+      const bodyContent = content.substring(funcStart + 1, closingBrace);
+      const bodyLines = bodyContent.split('\n');
+
+      const significantLines = bodyLines.filter(line => {
+        const trimmed = line.trim();
+        if (!trimmed) return false;
+        for (const commentPattern of config.commentPatterns) {
+          if (commentPattern.test(trimmed)) return false;
+        }
+        return true;
+      });
+
+      if (significantLines.length === 1) {
+        const onlyLine = significantLines[0].trim();
+        let stubMatch = config.stubReturnPattern.exec(onlyLine);
+        let returnValue = stubMatch ? stubMatch[1] : null;
+
+        if (!stubMatch && config.stubMacroPattern) {
+          stubMatch = config.stubMacroPattern.exec(onlyLine);
+          returnValue = stubMatch ? stubMatch[1] : null;
+        }
+        if (!stubMatch && config.throwStubPattern) {
+          stubMatch = config.throwStubPattern.exec(onlyLine);
+          returnValue = stubMatch ? 'throw stub' : null;
+        }
+        if (!stubMatch && config.panicPattern) {
+          stubMatch = config.panicPattern.exec(onlyLine);
+          returnValue = stubMatch ? 'panic' : null;
+        }
+
+        if (stubMatch && returnValue) {
+          const hasTodo = /\b(TODO|FIXME|XXX|HACK|STUB)\b/i.test(bodyContent);
+          const lineNumber = countNewlines(content.substring(0, funcStart)) + 1;
+
+          violations.push({
+            line: lineNumber,
+            functionName: funcName,
+            returnValue: returnValue,
+            hasTodo: hasTodo,
+            certainty: hasTodo ? 'HIGH' : 'MEDIUM',
+            content: `${funcName}() returns ${returnValue}`
+          });
+        }
+      }
+    }
+  }
+
+  return violations;
+}
+
+/**
+ * Analyze Python functions (indentation-based)
+ */
+function analyzeStubFunctionsPython(content) {
+  const violations = [];
+  const lines = content.split('\n');
+
+  const defPattern = /^(\s*)(?:async\s+)?def\s+(\w+)\s*\([^)]*\)\s*(?:->.*)?:\s*$/;
+  const stubReturns = [
+    /^\s*return\s+(None|0|True|False|\[\]|\{\}|"")\s*$/,
+    /^\s*pass\s*$/,
+    /^\s*raise\s+NotImplementedError\s*\([^)]*\)\s*$/,
+    /^\s*\.\.\.\s*$/,
+  ];
+  const commentPattern = /^\s*#/;
+
+  for (let i = 0; i < lines.length; i++) {
+    const match = defPattern.exec(lines[i]);
+    if (!match) continue;
+
+    const funcIndent = match[1].length;
+    const funcName = match[2];
+
+    const bodyLines = [];
+    for (let j = i + 1; j < lines.length; j++) {
+      const line = lines[j];
+      const trimmed = line.trim();
+
+      if (!trimmed) continue;
+
+      const lineIndent = line.length - line.trimStart().length;
+      if (lineIndent <= funcIndent && trimmed) break;
+
+      if (!commentPattern.test(trimmed) && !trimmed.startsWith('"""') && !trimmed.startsWith("'''")) {
+        bodyLines.push(trimmed);
+      }
+    }
+
+    if (bodyLines.length === 1) {
+      const onlyLine = bodyLines[0];
+      for (const stubPattern of stubReturns) {
+        const stubMatch = stubPattern.exec(onlyLine);
+        if (stubMatch) {
+          const returnValue = stubMatch[1] || onlyLine.trim();
+          const hasTodo = /\b(TODO|FIXME|XXX|HACK|STUB)\b/i.test(
+            lines.slice(i, Math.min(i + 10, lines.length)).join('\n')
+          );
+
+          violations.push({
+            line: i + 1,
+            functionName: funcName,
+            returnValue: returnValue,
+            hasTodo: hasTodo,
+            certainty: hasTodo ? 'HIGH' : 'MEDIUM',
+            content: `def ${funcName}(): ${onlyLine}`
+          });
+          break;
+        }
+      }
+    }
+  }
+
+  return violations;
+}
+
 module.exports = {
   analyzeDocCodeRatio,
   analyzeVerbosityRatio,
@@ -1738,6 +2238,7 @@ module.exports = {
   analyzeInfrastructureWithoutImplementation,
   analyzeDeadCode,
   analyzeShotgunSurgery,
+  analyzeStubFunctions,
   // Export helpers for testing
   findMatchingBrace,
   countNonEmptyLines,
@@ -1750,6 +2251,7 @@ module.exports = {
   detectCommentLanguage,
   shouldExclude,
   isTestFile,
+  parseGitignore,
   // Buzzword inflation helpers (for testing)
   extractClaims,
   searchEvidence,

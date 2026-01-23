@@ -149,9 +149,11 @@ function runPhase1(repoPath, targetFiles, language) {
     : slopPatterns.slopPatterns;
 
   for (const file of targetFiles) {
+    // Detect file language once per file
+    const fileLanguage = analyzers.detectLanguage(file);
+
     // Skip if language filter doesn't match file extension
     if (language) {
-      const fileLanguage = analyzers.detectLanguage(file);
       // For JS/TS language filter, accept both 'javascript' and 'js' detection results
       const isJsFamily = (language === 'javascript' || language === 'typescript') && fileLanguage === 'js';
       if (fileLanguage !== language && !isJsFamily) continue;
@@ -178,21 +180,72 @@ function runPhase1(repoPath, targetFiles, language) {
       // Skip if file matches exclude patterns
       if (slopPatterns.isFileExcluded(file, pattern.exclude)) continue;
 
-      // Check each line
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        if (pattern.pattern.test(line)) {
-          findings.push({
-            file,
-            line: i + 1,
-            patternName,
-            severity: pattern.severity,
-            certainty: CERTAINTY.HIGH,
-            description: pattern.description,
-            autoFix: pattern.autoFix,
-            content: line.trim().substring(0, 100),
-            phase: 1
-          });
+      // Skip language-specific patterns that don't match file's language
+      if (pattern.language) {
+        const patternLang = pattern.language;
+        // Map detection results to pattern language names
+        // Note: 'js' from detectLanguage covers both JavaScript and TypeScript
+        const langMatch = (patternLang === 'javascript' && fileLanguage === 'js') ||
+                          (patternLang === 'python' && fileLanguage === 'python') ||
+                          (patternLang === 'rust' && fileLanguage === 'rust') ||
+                          (patternLang === 'go' && fileLanguage === 'go') ||
+                          (patternLang === 'java' && fileLanguage === 'java') ||
+                          patternLang === fileLanguage;  // Direct match fallback
+        if (!langMatch) continue;
+      }
+
+      // Handle patterns requiring consecutive line blocks
+      if (pattern.minConsecutiveLines) {
+        const minLines = pattern.minConsecutiveLines;
+        let consecutiveStart = -1;
+        let consecutiveCount = 0;
+
+        for (let i = 0; i <= lines.length; i++) {
+          const line = i < lines.length ? lines[i] : ''; // Empty line at end to flush
+          const matches = i < lines.length && pattern.pattern.test(line);
+
+          if (matches) {
+            if (consecutiveStart === -1) {
+              consecutiveStart = i;
+            }
+            consecutiveCount++;
+          } else {
+            // End of consecutive block - check if it meets threshold
+            if (consecutiveCount >= minLines) {
+              findings.push({
+                file,
+                line: consecutiveStart + 1,
+                patternName,
+                severity: pattern.severity,
+                certainty: CERTAINTY.HIGH,
+                description: `${pattern.description} (${consecutiveCount} consecutive lines)`,
+                autoFix: pattern.autoFix,
+                content: `Lines ${consecutiveStart + 1}-${consecutiveStart + consecutiveCount}`,
+                phase: 1,
+                details: { startLine: consecutiveStart + 1, endLine: consecutiveStart + consecutiveCount, lineCount: consecutiveCount }
+              });
+            }
+            consecutiveStart = -1;
+            consecutiveCount = 0;
+          }
+        }
+      } else {
+        // Standard per-line matching
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          if (pattern.pattern.test(line)) {
+            findings.push({
+              file,
+              line: i + 1,
+              patternName,
+              severity: pattern.severity,
+              certainty: CERTAINTY.HIGH,
+              description: pattern.description,
+              autoFix: pattern.autoFix,
+              content: line.trim().substring(0, 100),
+              phase: 1
+            });
+          }
         }
       }
     }
@@ -214,12 +267,14 @@ function runMultiPassAnalyzers(repoPath, targetFiles) {
   // Get multi-pass pattern definitions for thresholds
   const multiPassPatterns = slopPatterns.getMultiPassPatterns();
 
-  for (const file of targetFiles) {
-    const filePath = path.isAbsolute(file) ? file : path.join(repoPath, file);
-    const lang = analyzers.detectLanguage(file);
+  // Supported languages for doc/code and verbosity analysis
+  const docCodeLangs = /\.(js|jsx|ts|tsx|mjs|cjs|py|rs|java|go)$/i;
 
-    // Skip non-JS files for doc/code ratio (JSDoc specific)
-    if (lang !== 'js') continue;
+  for (const file of targetFiles) {
+    if (!file.match(docCodeLangs)) continue;
+    if (analyzers.isTestFile(file)) continue;
+
+    const filePath = path.isAbsolute(file) ? file : path.join(repoPath, file);
 
     let content;
     try {
@@ -228,31 +283,32 @@ function runMultiPassAnalyzers(repoPath, targetFiles) {
       continue;
     }
 
-    // Doc/code ratio analysis
+    // Doc/code ratio analysis (multi-language)
     const docCodePattern = multiPassPatterns.doc_code_ratio_js;
     if (docCodePattern) {
       const docRatioViolations = analyzers.analyzeDocCodeRatio(content, {
         minFunctionLines: docCodePattern.minFunctionLines || 3,
-        maxRatio: docCodePattern.maxRatio || 3.0
+        maxRatio: docCodePattern.maxRatio || 3.0,
+        filePath: file
       });
 
       for (const v of docRatioViolations) {
         findings.push({
           file,
           line: v.line,
-          patternName: 'doc_code_ratio_js',
+          patternName: 'doc_code_ratio',
           severity: docCodePattern.severity,
           certainty: CERTAINTY.MEDIUM,
           description: `${docCodePattern.description} (${v.docLines} doc lines / ${v.codeLines} code lines = ${v.ratio}x)`,
           autoFix: docCodePattern.autoFix,
-          content: `Function at line ${v.line}`,
+          content: v.functionName ? `${v.functionName}()` : `Function at line ${v.line}`,
           phase: 1,
-          details: { docLines: v.docLines, codeLines: v.codeLines, ratio: v.ratio }
+          details: { docLines: v.docLines, codeLines: v.codeLines, ratio: v.ratio, functionName: v.functionName }
         });
       }
     }
 
-    // Verbosity ratio analysis
+    // Verbosity ratio analysis (multi-language)
     const verbosityPattern = multiPassPatterns.verbosity_ratio;
     if (verbosityPattern) {
       const verbosityViolations = analyzers.analyzeVerbosityRatio(content, {
@@ -344,6 +400,107 @@ function runMultiPassAnalyzers(repoPath, targetFiles) {
         phase: 1,
         details: { varName: v.varName, type: v.type }
       });
+    }
+  }
+
+  // Dead code analysis (per-file)
+  const deadCodePattern = multiPassPatterns.dead_code;
+  if (deadCodePattern) {
+    for (const file of targetFiles) {
+      // Skip test files
+      if (analyzers.isTestFile(file)) continue;
+
+      const filePath = path.isAbsolute(file) ? file : path.join(repoPath, file);
+      let content;
+      try {
+        content = fs.readFileSync(filePath, 'utf8');
+      } catch {
+        continue;
+      }
+
+      const deadCodeViolations = analyzers.analyzeDeadCode(content, { filePath: file });
+
+      for (const v of deadCodeViolations) {
+        findings.push({
+          file,
+          line: v.line,
+          patternName: 'dead_code',
+          severity: deadCodePattern.severity,
+          certainty: CERTAINTY.MEDIUM,
+          description: `${deadCodePattern.description}: ${v.terminationType} at line ${v.terminationLine}`,
+          autoFix: deadCodePattern.autoFix,
+          content: v.content,
+          phase: 1,
+          details: { terminationType: v.terminationType, terminationLine: v.terminationLine }
+        });
+      }
+    }
+  }
+
+  // Stub function analysis (per-file, multi-language)
+  const stubPattern = multiPassPatterns.placeholder_stub_returns_js;
+  if (stubPattern) {
+    // Supported extensions for stub detection
+    const stubExtensions = /\.(js|jsx|ts|tsx|mjs|cjs|py|rs|java|go)$/i;
+
+    for (const file of targetFiles) {
+      if (analyzers.isTestFile(file)) continue;
+      if (!file.match(stubExtensions)) continue;
+      // Honor pattern exclude globs (e.g., *.config.*)
+      if (slopPatterns.isFileExcluded(file, stubPattern.exclude)) continue;
+
+      const filePath = path.isAbsolute(file) ? file : path.join(repoPath, file);
+      let content;
+      try {
+        content = fs.readFileSync(filePath, 'utf8');
+      } catch {
+        continue;
+      }
+
+      const stubViolations = analyzers.analyzeStubFunctions(content, { filePath: file });
+
+      for (const v of stubViolations) {
+        findings.push({
+          file,
+          line: v.line,
+          patternName: 'placeholder_stub_returns',
+          severity: v.hasTodo ? 'high' : stubPattern.severity,
+          certainty: v.certainty,
+          description: `${stubPattern.description}: ${v.functionName}() returns ${v.returnValue}`,
+          autoFix: stubPattern.autoFix,
+          content: v.content,
+          phase: 1,
+          details: { functionName: v.functionName, returnValue: v.returnValue, hasTodo: v.hasTodo }
+        });
+      }
+    }
+  }
+
+  // Shotgun surgery analysis (git history)
+  const shotgunPattern = multiPassPatterns.shotgun_surgery;
+  if (shotgunPattern) {
+    try {
+      const shotgunResult = analyzers.analyzeShotgunSurgery(repoPath, {
+        commitLimit: shotgunPattern.commitLimit || 100,
+        clusterThreshold: shotgunPattern.clusterThreshold || 5
+      });
+
+      for (const v of shotgunResult.violations) {
+        findings.push({
+          file: 'project-level',
+          line: 0,
+          patternName: 'shotgun_surgery',
+          severity: shotgunPattern.severity,
+          certainty: CERTAINTY.MEDIUM,
+          description: `${shotgunPattern.description}: ${v.files.length} files change together ${v.count} times`,
+          autoFix: shotgunPattern.autoFix,
+          content: v.files.join(', ').substring(0, 100),
+          phase: 1,
+          details: { files: v.files, changeCount: v.count }
+        });
+      }
+    } catch {
+      // Git not available or not a git repo - skip silently
     }
   }
 

@@ -325,6 +325,7 @@ function analyzeDocumentation(options = {}) {
     'README.md',
     'PLAN.md',
     'CLAUDE.md',
+    'AGENTS.md',
     'CONTRIBUTING.md',
     'CHANGELOG.md',
     'docs/README.md',

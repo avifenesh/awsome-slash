@@ -162,7 +162,7 @@ function add(a, b) {
 
       const findings = runMultiPassAnalyzers(tmpDir, ['math.js']);
 
-      const docRatioFindings = findings.filter(f => f.patternName === 'doc_code_ratio_js');
+      const docRatioFindings = findings.filter(f => f.patternName === 'doc_code_ratio');
       expect(docRatioFindings.length).toBeGreaterThan(0);
       expect(docRatioFindings[0].certainty).toBe(CERTAINTY.MEDIUM);
     });
@@ -194,15 +194,15 @@ function process(data) {
       expect(verbosityFindings.length).toBeGreaterThan(0);
     });
 
-    it('should skip non-JS files for JSDoc analysis', () => {
+    it('should skip unsupported file types for doc analysis', () => {
       fs.writeFileSync(
-        path.join(tmpDir, 'app.py'),
-        '"""\nVery long docstring\n"""\ndef foo():\n  pass\n'
+        path.join(tmpDir, 'data.json'),
+        '{ "key": "value" }'
       );
 
-      const findings = runMultiPassAnalyzers(tmpDir, ['app.py']);
+      const findings = runMultiPassAnalyzers(tmpDir, ['data.json']);
 
-      const docRatioFindings = findings.filter(f => f.patternName === 'doc_code_ratio_js');
+      const docRatioFindings = findings.filter(f => f.patternName === 'doc_code_ratio');
       expect(docRatioFindings.length).toBe(0);
     });
   });
@@ -698,7 +698,7 @@ function foo() {
         targetFiles: ['test.js']
       });
 
-      const docRatioFindings = result.findings.filter(f => f.patternName === 'doc_code_ratio_js');
+      const docRatioFindings = result.findings.filter(f => f.patternName === 'doc_code_ratio');
       if (docRatioFindings.length > 0) {
         expect(docRatioFindings[0].certainty).toBe(CERTAINTY.MEDIUM);
       }

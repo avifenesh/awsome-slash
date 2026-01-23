@@ -13,10 +13,12 @@ const {
   findMatchingBrace,
   countNonEmptyLines,
   countExportsInContent,
+  countSourceFiles,
   detectLanguage,
   detectCommentLanguage,
   shouldExclude,
   isTestFile,
+  parseGitignore,
   ENTRY_POINTS,
   EXPORT_PATTERNS,
   SOURCE_EXTENSIONS,
@@ -412,6 +414,79 @@ function foo() {
         expect(violations[0].docLines).toBe(6);
         expect(violations[0].codeLines).toBe(3);
         expect(violations[0].ratio).toBe(2); // 6/3 = 2
+      });
+    });
+
+    describe('multi-language support', () => {
+      it('should detect excessive Python docstrings', () => {
+        const code = `def process():
+    """
+    This is a very long docstring.
+    It explains the function in detail.
+    Line 3 of documentation.
+    Line 4 of documentation.
+    Line 5 of documentation.
+    Line 6 of documentation.
+    """
+    return 1`;
+        const violations = analyzeDocCodeRatio(code, { maxRatio: 3.0, minFunctionLines: 1, filePath: 'test.py' });
+        expect(violations.length).toBe(1);
+        expect(violations[0].ratio).toBeGreaterThan(3.0);
+      });
+
+      it('should detect excessive Rust doc comments', () => {
+        const code = `/// This function does something.
+/// Line 2 of documentation.
+/// Line 3 of documentation.
+/// Line 4 of documentation.
+/// Line 5 of documentation.
+/// Line 6 of documentation.
+fn process() {
+    1
+}`;
+        const violations = analyzeDocCodeRatio(code, { maxRatio: 3.0, minFunctionLines: 1, filePath: 'test.rs' });
+        expect(violations.length).toBe(1);
+      });
+
+      it('should detect excessive Go doc comments', () => {
+        const code = `// Process does something important.
+// Line 2 of documentation.
+// Line 3 of documentation.
+// Line 4 of documentation.
+// Line 5 of documentation.
+// Line 6 of documentation.
+func Process() {
+    return
+}`;
+        const violations = analyzeDocCodeRatio(code, { maxRatio: 3.0, minFunctionLines: 1, filePath: 'test.go' });
+        expect(violations.length).toBe(1);
+      });
+
+      it('should detect excessive Java Javadoc', () => {
+        const code = `/**
+ * This method does something.
+ * Line 2 of documentation.
+ * Line 3 of documentation.
+ * Line 4 of documentation.
+ * Line 5 of documentation.
+ * Line 6 of documentation.
+ */
+public void process() {
+    return;
+}`;
+        const violations = analyzeDocCodeRatio(code, { maxRatio: 3.0, minFunctionLines: 1, filePath: 'Test.java' });
+        expect(violations.length).toBe(1);
+      });
+
+      it('should NOT flag Python functions with acceptable ratio', () => {
+        const code = `def process():
+    """Short docstring."""
+    x = 1
+    y = 2
+    z = 3
+    return x + y + z`;
+        const violations = analyzeDocCodeRatio(code, { maxRatio: 3.0, minFunctionLines: 1, filePath: 'test.py' });
+        expect(violations.length).toBe(0);
       });
     });
   });
@@ -884,6 +959,33 @@ function func${i}() {
         expect(countExportsInContent(content, 'python')).toBe(2);
       });
     });
+
+    describe('Java', () => {
+      it('should count public classes', () => {
+        const content = 'public class MyClass {\n}\npublic interface MyInterface {\n}';
+        expect(countExportsInContent(content, 'java')).toBe(2);
+      });
+
+      it('should count public methods', () => {
+        const content = 'public void doSomething() {\n}\npublic String getName() {\n}';
+        expect(countExportsInContent(content, 'java')).toBe(2);
+      });
+
+      it('should count public static methods', () => {
+        const content = 'public static void main(String[] args) {\n}';
+        expect(countExportsInContent(content, 'java')).toBe(1);
+      });
+
+      it('should count generic return types', () => {
+        const content = 'public List<String> getItems() {\n}';
+        expect(countExportsInContent(content, 'java')).toBe(1);
+      });
+
+      it('should not count private members', () => {
+        const content = 'private void helper() {\n}\nprivate class Inner {\n}';
+        expect(countExportsInContent(content, 'java')).toBe(0);
+      });
+    });
   });
 
   describe('constants', () => {
@@ -899,6 +1001,7 @@ function func${i}() {
       expect(EXPORT_PATTERNS.rust).toBeDefined();
       expect(EXPORT_PATTERNS.go).toBeDefined();
       expect(EXPORT_PATTERNS.python).toBeDefined();
+      expect(EXPORT_PATTERNS.java).toBeDefined();
     });
 
     it('should have SOURCE_EXTENSIONS for each language', () => {
@@ -2548,6 +2651,7 @@ describe('Redis tests', () => {
         expect(INSTANTIATION_PATTERNS).toHaveProperty('python');
         expect(INSTANTIATION_PATTERNS).toHaveProperty('go');
         expect(INSTANTIATION_PATTERNS).toHaveProperty('rust');
+        expect(INSTANTIATION_PATTERNS).toHaveProperty('java');
 
         // Each language should have an array of regex patterns
         for (const patterns of Object.values(INSTANTIATION_PATTERNS)) {
@@ -2576,8 +2680,8 @@ function test() {
         const violations = analyzeDeadCode(code, { filePath: 'test.js' });
 
         expect(violations.length).toBe(1);
-        expect(violations[0].deadCode).toContain('console.log');
-        expect(violations[0].terminatedBy).toContain('return');
+        expect(violations[0].content).toContain('console.log');
+        expect(violations[0].terminationType).toContain('return');
       });
 
       it('should detect dead code after throw statement', () => {
@@ -2589,8 +2693,8 @@ function test() {
         const violations = analyzeDeadCode(code, { filePath: 'test.js' });
 
         expect(violations.length).toBe(1);
-        expect(violations[0].deadCode).toContain('doSomething');
-        expect(violations[0].terminatedBy).toContain('throw');
+        expect(violations[0].content).toContain('doSomething');
+        expect(violations[0].terminationType).toContain('throw');
       });
 
       it('should detect dead code after break in switch', () => {
@@ -2603,7 +2707,7 @@ switch (x) {
         const violations = analyzeDeadCode(code, { filePath: 'test.js' });
 
         expect(violations.length).toBe(1);
-        expect(violations[0].terminatedBy).toContain('break');
+        expect(violations[0].terminationType).toContain('break');
       });
 
       it('should detect dead code after continue in loop', () => {
@@ -2615,7 +2719,7 @@ for (let i = 0; i < 10; i++) {
         const violations = analyzeDeadCode(code, { filePath: 'test.js' });
 
         expect(violations.length).toBe(1);
-        expect(violations[0].terminatedBy).toContain('continue');
+        expect(violations[0].terminationType).toContain('continue');
       });
 
       it('should NOT detect false positives in if/else branches', () => {
@@ -2684,7 +2788,7 @@ def test():
         const violations = analyzeDeadCode(code, { filePath: 'test.py' });
 
         expect(violations.length).toBe(1);
-        expect(violations[0].terminatedBy).toContain('return');
+        expect(violations[0].terminationType).toContain('return');
       });
 
       it('should detect dead code after raise in Python', () => {
@@ -2695,7 +2799,7 @@ def test():
         const violations = analyzeDeadCode(code, { filePath: 'test.py' });
 
         expect(violations.length).toBe(1);
-        expect(violations[0].terminatedBy).toContain('raise');
+        expect(violations[0].terminationType).toContain('raise');
       });
 
       it('should NOT flag except clauses', () => {
@@ -2734,7 +2838,7 @@ func test() int {
         const violations = analyzeDeadCode(code, { filePath: 'test.go' });
 
         expect(violations.length).toBe(1);
-        expect(violations[0].terminatedBy).toContain('return');
+        expect(violations[0].terminationType).toContain('return');
       });
 
       it('should detect dead code after panic in Go', () => {
@@ -2746,7 +2850,7 @@ func test() {
         const violations = analyzeDeadCode(code, { filePath: 'test.go' });
 
         expect(violations.length).toBe(1);
-        expect(violations[0].terminatedBy).toContain('panic');
+        expect(violations[0].terminationType).toContain('panic');
       });
     });
 
@@ -2760,7 +2864,7 @@ fn test() -> i32 {
         const violations = analyzeDeadCode(code, { filePath: 'test.rs' });
 
         expect(violations.length).toBe(1);
-        expect(violations[0].terminatedBy).toContain('return');
+        expect(violations[0].terminationType).toContain('return');
       });
 
       it('should detect dead code after panic! in Rust', () => {
@@ -2772,7 +2876,7 @@ fn test() {
         const violations = analyzeDeadCode(code, { filePath: 'test.rs' });
 
         expect(violations.length).toBe(1);
-        expect(violations[0].terminatedBy).toContain('panic');
+        expect(violations[0].terminationType).toContain('panic');
       });
     });
 
@@ -2818,7 +2922,7 @@ function outer() {
         const violations = analyzeDeadCode(code, { filePath: 'test.js' });
 
         expect(violations.length).toBe(1);
-        expect(violations[0].deadCode).toContain('inner dead');
+        expect(violations[0].content).toContain('inner dead');
       });
 
       it('should skip comments correctly', () => {
@@ -2831,7 +2935,7 @@ function test() {
         const violations = analyzeDeadCode(code, { filePath: 'test.js' });
 
         expect(violations.length).toBe(1);
-        expect(violations[0].deadCode).toContain('console.log');
+        expect(violations[0].content).toContain('console.log');
       });
     });
 
@@ -3182,6 +3286,160 @@ src/j.js`;
 
         expect(Date.now() - start).toBeLessThan(MAX_SAFE_TIME);
       });
+    });
+  });
+
+  describe('parseGitignore', () => {
+    const createMockFs = (gitignoreContent) => ({
+      readFileSync: (filePath) => {
+        if (filePath.endsWith('.gitignore')) {
+          if (gitignoreContent === null) throw new Error('ENOENT');
+          return gitignoreContent;
+        }
+        throw new Error('File not found');
+      }
+    });
+
+    const mockPath = {
+      join: (...args) => args.join('/')
+    };
+
+    it('should return null when no .gitignore exists', () => {
+      const isIgnored = parseGitignore('/repo', createMockFs(null), mockPath);
+      expect(isIgnored).toBeNull();
+    });
+
+    it('should ignore simple file patterns', () => {
+      const isIgnored = parseGitignore('/repo', createMockFs('*.log\n*.tmp'), mockPath);
+      expect(isIgnored('debug.log')).toBe(true);
+      expect(isIgnored('temp.tmp')).toBe(true);
+      expect(isIgnored('index.js')).toBe(false);
+    });
+
+    it('should ignore directory patterns', () => {
+      const isIgnored = parseGitignore('/repo', createMockFs('build/\ncoverage/'), mockPath);
+      expect(isIgnored('build', true)).toBe(true);
+      expect(isIgnored('coverage', true)).toBe(true);
+      expect(isIgnored('src', true)).toBe(false);
+    });
+
+    it('should handle negation patterns', () => {
+      const isIgnored = parseGitignore('/repo', createMockFs('*.log\n!important.log'), mockPath);
+      expect(isIgnored('debug.log')).toBe(true);
+      expect(isIgnored('important.log')).toBe(false);
+    });
+
+    it('should ignore comments and empty lines', () => {
+      const isIgnored = parseGitignore('/repo', createMockFs('# comment\n\n*.log'), mockPath);
+      expect(isIgnored('debug.log')).toBe(true);
+      expect(isIgnored('# comment')).toBe(false);
+    });
+
+    it('should handle nested path patterns', () => {
+      const isIgnored = parseGitignore('/repo', createMockFs('src/generated/'), mockPath);
+      expect(isIgnored('src/generated', true)).toBe(true);
+      expect(isIgnored('src/utils', true)).toBe(false);
+    });
+
+    it('should handle globstar patterns', () => {
+      const isIgnored = parseGitignore('/repo', createMockFs('**/temp/**'), mockPath);
+      expect(isIgnored('temp/file.js')).toBe(true);
+      expect(isIgnored('src/temp/file.js')).toBe(true);
+      expect(isIgnored('src/file.js')).toBe(false);
+    });
+
+    it('should handle anchored patterns', () => {
+      const isIgnored = parseGitignore('/repo', createMockFs('/root-only.txt'), mockPath);
+      expect(isIgnored('root-only.txt')).toBe(true);
+      expect(isIgnored('sub/root-only.txt')).toBe(false);
+    });
+  });
+
+  describe('countSourceFiles with gitignore', () => {
+    const createMockFs = (files, gitignoreContent) => {
+      const dirs = new Set();
+      files.forEach(f => {
+        const parts = f.split('/');
+        let current = '';
+        for (let i = 0; i < parts.length - 1; i++) {
+          current += (current ? '/' : '') + parts[i];
+          dirs.add(current);
+        }
+      });
+
+      return {
+        readdirSync: (dir, opts) => {
+          const entries = [];
+          const prefix = dir === '/repo' ? '' : dir.replace('/repo/', '') + '/';
+          const children = new Set();
+
+          files.forEach(f => {
+            if (prefix && !f.startsWith(prefix)) return;
+            const remainder = prefix ? f.slice(prefix.length) : f;
+            const firstSlash = remainder.indexOf('/');
+            const name = firstSlash === -1 ? remainder : remainder.slice(0, firstSlash);
+            if (!children.has(name)) {
+              children.add(name);
+              const fullPath = prefix + name;
+              entries.push({
+                name,
+                isDirectory: () => dirs.has(fullPath),
+                isFile: () => !dirs.has(fullPath)
+              });
+            }
+          });
+          return entries;
+        },
+        readFileSync: (filePath, encoding) => {
+          if (filePath === '/repo/.gitignore') {
+            if (gitignoreContent === null) throw new Error('ENOENT');
+            return gitignoreContent;
+          }
+          throw new Error('File not found');
+        }
+      };
+    };
+
+    const mockPath = {
+      join: (...args) => args.join('/'),
+      relative: (from, to) => to.replace(from + '/', ''),
+      extname: (f) => {
+        const match = f.match(/\.[^.]+$/);
+        return match ? match[0] : '';
+      }
+    };
+
+    it('should exclude files matching gitignore patterns', () => {
+      const files = ['src/index.js', 'src/generated/types.js', 'lib/utils.js'];
+      const fs = createMockFs(files, 'generated/');
+      const result = countSourceFiles('/repo', { fs, path: mockPath });
+      expect(result.files).toContain('src/index.js');
+      expect(result.files).toContain('lib/utils.js');
+      expect(result.files).not.toContain('src/generated/types.js');
+    });
+
+    it('should include all files when respectGitignore is false', () => {
+      const files = ['src/index.js', 'src/generated/types.js'];
+      const fs = createMockFs(files, 'generated/');
+      const result = countSourceFiles('/repo', { fs, path: mockPath, respectGitignore: false });
+      expect(result.files).toContain('src/index.js');
+      expect(result.files).toContain('src/generated/types.js');
+    });
+
+    it('should work when no .gitignore exists', () => {
+      const files = ['src/index.js', 'lib/utils.js'];
+      const fs = createMockFs(files, null);
+      const result = countSourceFiles('/repo', { fs, path: mockPath });
+      expect(result.files).toContain('src/index.js');
+      expect(result.files).toContain('lib/utils.js');
+    });
+
+    it('should exclude files with extension patterns', () => {
+      const files = ['src/app.js', 'logs/debug.log', 'data/cache.tmp'];
+      const fs = createMockFs(files, '*.log\n*.tmp');
+      const result = countSourceFiles('/repo', { fs, path: mockPath });
+      expect(result.files).toContain('src/app.js');
+      // .log and .tmp are not in SOURCE_EXTENSIONS anyway, but pattern should match
     });
   });
 });
