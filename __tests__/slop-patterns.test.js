@@ -944,6 +944,131 @@ describe('slop-patterns', () => {
         });
       });
 
+      describe('stub returns - Python', () => {
+        const { analyzeStubFunctions } = require('../lib/patterns/slop-analyzers.js');
+
+        it('should detect Python stub returning None', () => {
+          const code = `def stub():\n    return None`;
+          const violations = analyzeStubFunctions(code, { filePath: 'test.py' });
+          expect(violations.length).toBe(1);
+          expect(violations[0].returnValue).toBe('None');
+        });
+
+        it('should detect Python stub with pass', () => {
+          const code = `def stub():\n    pass`;
+          const violations = analyzeStubFunctions(code, { filePath: 'test.py' });
+          expect(violations.length).toBe(1);
+        });
+
+        it('should detect Python stub with ellipsis', () => {
+          const code = `def stub():\n    ...`;
+          const violations = analyzeStubFunctions(code, { filePath: 'test.py' });
+          expect(violations.length).toBe(1);
+        });
+
+        it('should detect Python stub raising NotImplementedError', () => {
+          const code = `def stub():\n    raise NotImplementedError("not done")`;
+          const violations = analyzeStubFunctions(code, { filePath: 'test.py' });
+          expect(violations.length).toBe(1);
+        });
+
+        it('should NOT match Python functions with real logic', () => {
+          const code = `def process():\n    x = compute()\n    return x * 2`;
+          const violations = analyzeStubFunctions(code, { filePath: 'test.py' });
+          expect(violations.length).toBe(0);
+        });
+      });
+
+      describe('stub returns - Rust', () => {
+        const { analyzeStubFunctions } = require('../lib/patterns/slop-analyzers.js');
+
+        it('should detect Rust stub returning None', () => {
+          const code = `fn stub() -> Option<i32> { None }`;
+          const violations = analyzeStubFunctions(code, { filePath: 'test.rs' });
+          expect(violations.length).toBe(1);
+        });
+
+        it('should detect Rust stub with todo!()', () => {
+          const code = `fn stub() { todo!() }`;
+          const violations = analyzeStubFunctions(code, { filePath: 'test.rs' });
+          expect(violations.length).toBe(1);
+        });
+
+        it('should detect Rust stub with unimplemented!()', () => {
+          const code = `fn stub() { unimplemented!() }`;
+          const violations = analyzeStubFunctions(code, { filePath: 'test.rs' });
+          expect(violations.length).toBe(1);
+        });
+
+        it('should detect Rust pub fn stub', () => {
+          const code = `pub fn stub() -> Vec<i32> { Vec::new() }`;
+          const violations = analyzeStubFunctions(code, { filePath: 'test.rs' });
+          expect(violations.length).toBe(1);
+        });
+
+        it('should NOT match Rust functions with real logic', () => {
+          const code = `fn process() -> i32 { let x = 5; x * 2 }`;
+          const violations = analyzeStubFunctions(code, { filePath: 'test.rs' });
+          expect(violations.length).toBe(0);
+        });
+      });
+
+      describe('stub returns - Java', () => {
+        const { analyzeStubFunctions } = require('../lib/patterns/slop-analyzers.js');
+
+        it('should detect Java stub returning null', () => {
+          const code = `public String stub() { return null; }`;
+          const violations = analyzeStubFunctions(code, { filePath: 'Test.java' });
+          expect(violations.length).toBe(1);
+        });
+
+        it('should detect Java stub throwing UnsupportedOperationException', () => {
+          const code = `public void stub() { throw new UnsupportedOperationException(); }`;
+          const violations = analyzeStubFunctions(code, { filePath: 'Test.java' });
+          expect(violations.length).toBe(1);
+        });
+
+        it('should detect Java stub returning empty collections', () => {
+          const code = `public List<String> stub() { return Collections.emptyList(); }`;
+          const violations = analyzeStubFunctions(code, { filePath: 'Test.java' });
+          expect(violations.length).toBe(1);
+        });
+
+        it('should NOT match Java methods with real logic', () => {
+          const code = `public int process() { int x = compute(); return x * 2; }`;
+          const violations = analyzeStubFunctions(code, { filePath: 'Test.java' });
+          expect(violations.length).toBe(0);
+        });
+      });
+
+      describe('stub returns - Go', () => {
+        const { analyzeStubFunctions } = require('../lib/patterns/slop-analyzers.js');
+
+        it('should detect Go stub returning nil', () => {
+          const code = `func stub() error { return nil }`;
+          const violations = analyzeStubFunctions(code, { filePath: 'test.go' });
+          expect(violations.length).toBe(1);
+        });
+
+        it('should detect Go stub with panic', () => {
+          const code = `func stub() { panic("not implemented") }`;
+          const violations = analyzeStubFunctions(code, { filePath: 'test.go' });
+          expect(violations.length).toBe(1);
+        });
+
+        it('should detect Go method stub', () => {
+          const code = `func (s *Server) stub() string { return "" }`;
+          const violations = analyzeStubFunctions(code, { filePath: 'test.go' });
+          expect(violations.length).toBe(1);
+        });
+
+        it('should NOT match Go functions with real logic', () => {
+          const code = `func process() int { x := compute(); return x * 2 }`;
+          const violations = analyzeStubFunctions(code, { filePath: 'test.go' });
+          expect(violations.length).toBe(0);
+        });
+      });
+
       describe('not implemented errors', () => {
         const pattern = () => slopPatterns.placeholder_not_implemented_js.pattern;
 
