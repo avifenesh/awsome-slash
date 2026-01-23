@@ -1,6 +1,6 @@
 ---
-description: Analyze plugin structures, MCP tools, agent prompts, and security patterns
-argument-hint: "[target-name] [--fix] [--verbose]"
+description: Analyze plugin structures, MCP tools, agent prompts, documentation, and security patterns
+argument-hint: "[target-name] [--fix] [--verbose] [--ai]"
 ---
 
 # /enhance:plugin - Plugin Structure Analyzer
@@ -271,5 +271,195 @@ if (applyFixes) {
 - Prompt structure checked
 - Tool restrictions verified
 - CoT appropriateness assessed
+- Clear, actionable report
+- Auto-fix available for HIGH certainty issues
+
+---
+
+# /enhance:docs - Documentation Optimizer
+
+Analyze documentation files for readability and RAG optimization.
+
+## Arguments
+
+Parse from $ARGUMENTS:
+- **doc**: Specific doc path or directory (default: docs/)
+- **--ai**: AI-only mode (aggressive RAG optimization for agent-docs)
+- **--both**: Both audiences mode (default, balance readability + AI)
+- **--fix**: Apply auto-fixes for HIGH certainty issues
+- **--verbose**: Show all issues including LOW certainty
+
+## Optimization Modes
+
+### AI-Only Mode (`--ai`)
+For agent-docs and RAG-optimized documentation:
+- Aggressive token reduction
+- Dense information packing
+- Self-contained sections for retrieval
+- Minimal prose, maximum data
+
+### Both Mode (`--both`, default)
+For user-facing documentation:
+- Balance readability with AI-friendliness
+- Clear structure for both humans and retrievers
+- Explanatory text where helpful
+
+## Workflow
+
+1. **Discover docs** - Find all .md files in target directory
+2. **Load patterns** - Import from `${CLAUDE_PLUGIN_ROOT}/lib/enhance/docs-patterns`
+3. **Analyze each doc**:
+   - Validate structure (headings, links, code blocks)
+   - Check for RAG-friendly chunking (AI mode)
+   - Identify token inefficiencies (AI mode)
+   - Assess content organization (both mode)
+4. **Generate report** - Markdown table grouped by category
+5. **Apply fixes** - If --fix flag, apply HIGH certainty auto-fixes
+
+## Detection Categories
+
+### HIGH Certainty (auto-fixable)
+
+| Pattern | Description | Mode | Auto-Fix |
+|---------|-------------|------|----------|
+| Broken internal link | Link to non-existent file/anchor | shared | No |
+| Inconsistent headings | H1 -> H3 without H2 | shared | Yes |
+| Missing code language | Code block without language hint | shared | No |
+| Unnecessary prose | Filler text like "In this document..." | ai | No |
+| Verbose explanations | "in order to" -> "to" | ai | Yes |
+
+### MEDIUM Certainty
+
+| Pattern | Description | Mode |
+|---------|-------------|------|
+| Section too long | >1000 tokens in single section | shared |
+| Suboptimal chunking | Content not structured for RAG | ai |
+| Poor semantic boundaries | Mixed topics in single section | ai |
+| Missing context anchors | Sections start with "It", "This" | ai |
+| Missing section headers | Long content without structure | both |
+| Poor context ordering | Important info buried late | both |
+
+### LOW Certainty (advisory)
+
+| Pattern | Description | Mode |
+|---------|-------------|------|
+| Token inefficiency | Optimization opportunities | ai |
+| Readability/RAG balance | Balance suggestions | both |
+| Structure recommendations | General structure advice | both |
+
+## Output Format
+
+```markdown
+## Documentation Analysis: {doc-name}
+
+**File**: {path}
+**Mode**: {AI-only | Both audiences}
+**Token Count**: ~{tokens}
+**Analyzed**: {timestamp}
+
+### Summary
+- HIGH: {count} issues
+- MEDIUM: {count} issues
+- LOW: {count} issues
+
+### Link Issues ({n})
+| Issue | Fix | Certainty |
+|-------|-----|-----------|
+| Broken anchor: #missing | Fix or remove link | HIGH |
+
+### Structure Issues ({n})
+| Issue | Fix | Certainty |
+|-------|-----|-----------|
+| Heading level jumps H1 to H3 | Fix heading hierarchy | HIGH |
+
+### Efficiency Issues ({n}) [AI mode]
+| Issue | Fix | Certainty |
+|-------|-----|-----------|
+| 5 instances of unnecessary prose | Remove filler text | HIGH |
+
+### RAG Optimization Issues ({n}) [AI mode]
+| Issue | Fix | Certainty |
+|-------|-----|-----------|
+| 3 sections exceed 1000 tokens | Break into subsections | MEDIUM |
+
+### Balance Suggestions ({n}) [Both mode]
+| Issue | Fix | Certainty |
+|-------|-----|-----------|
+| Long content without headers | Add section structure | MEDIUM |
+```
+
+## Implementation
+
+```javascript
+const { docsAnalyzer } = require('${CLAUDE_PLUGIN_ROOT}/lib/enhance');
+
+// Parse arguments
+const args = '$ARGUMENTS'.split(' ').filter(Boolean);
+const docPath = args.find(a => !a.startsWith('--'));
+const mode = args.includes('--ai') ? 'ai' : 'both';
+const applyFixes = args.includes('--fix');
+const verbose = args.includes('--verbose');
+
+// Run analysis
+const results = await docsAnalyzer.analyze({
+  doc: docPath,
+  docsDir: docPath || 'docs',
+  mode,
+  verbose
+});
+
+// Generate report
+const report = docsAnalyzer.generateReport(results);
+console.log(report);
+
+// Apply fixes if requested
+if (applyFixes) {
+  const fixed = await docsAnalyzer.applyFixes(results);
+  console.log(`\nApplied ${fixed.applied.length} fixes`);
+  if (fixed.errors.length > 0) {
+    console.log(`Errors: ${fixed.errors.length}`);
+  }
+}
+```
+
+## Example Usage
+
+```bash
+# Analyze docs with default mode (both audiences)
+/enhance:docs
+
+# Analyze with AI-only mode (aggressive RAG optimization)
+/enhance:docs --ai
+
+# Analyze specific directory
+/enhance:docs agent-docs/ --ai
+
+# Analyze specific file
+/enhance:docs docs/getting-started.md
+
+# Apply auto-fixes
+/enhance:docs --fix
+
+# Verbose output (includes LOW certainty)
+/enhance:docs --verbose
+
+# Dry run fixes
+/enhance:docs --fix --dry-run
+```
+
+## Pattern Statistics
+
+- Total patterns: 13
+- HIGH certainty: 5 (2 auto-fixable)
+- MEDIUM certainty: 6
+- LOW certainty: 2
+
+## Success Criteria
+
+- All documentation files validated
+- Links checked for validity
+- Structure analyzed for consistency
+- Token efficiency assessed (AI mode)
+- RAG chunking evaluated (AI mode)
 - Clear, actionable report
 - Auto-fix available for HIGH certainty issues
