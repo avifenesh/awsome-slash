@@ -27,6 +27,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Comprehensive test suite (45 tests)
   - Uses opus model for quality multiplier effect
 
+
+- **Project Memory Optimizer** - New `/enhance:claudemd` command (#121)
+  - Analyzes CLAUDE.md/AGENTS.md project memory files for optimization opportunities
+  - 14 detection patterns across 5 categories: structure, reference, efficiency, quality, cross-platform
+  - Validates file and command references against filesystem
+  - Measures token efficiency and detects README duplication
+  - Checks for critical rules, architecture overview, key commands sections
+  - Detects hardcoded state directories and Claude-only terminology
+  - Validates WHY explanations for rules
+  - HIGH/MEDIUM/LOW certainty levels for findings
+  - No auto-fix (requires human judgment for documentation)
+  - New lib/enhance/projectmemory-analyzer.js and projectmemory-patterns.js
+  - Comprehensive test suite (30+ tests)
+  - Extended reporter.js with generateProjectMemoryReport()
+  - Searches for CLAUDE.md, AGENTS.md, .github/CLAUDE.md, .github/AGENTS.md
 - **Plugin Structure Analyzer** - New `/enhance:plugin` command (#119)
   - Analyzes plugin.json structure and required fields
   - Validates MCP tool definitions against best practices

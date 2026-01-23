@@ -273,3 +273,186 @@ if (applyFixes) {
 - CoT appropriateness assessed
 - Clear, actionable report
 - Auto-fix available for HIGH certainty issues
+
+---
+
+# /enhance:claudemd - Project Memory Optimizer
+
+Analyze CLAUDE.md/AGENTS.md project memory files for optimization opportunities.
+
+## Arguments
+
+Parse from $ARGUMENTS:
+- **path**: Project directory or specific file (default: current directory)
+- **--verbose**: Show all issues including LOW certainty
+
+Note: Reference validation (file paths, npm commands) is always enabled.
+
+## Workflow
+
+1. **Find file** - Locate CLAUDE.md or AGENTS.md
+2. **Load patterns** - Import from `${CLAUDE_PLUGIN_ROOT}/lib/enhance/projectmemory-patterns`
+3. **Analyze structure**:
+   - Check for critical rules section
+   - Verify architecture/structure section
+   - Validate key commands section
+4. **Validate references**:
+   - Check file paths exist
+   - Verify npm commands exist in package.json
+5. **Measure efficiency**:
+   - Calculate token count
+   - Detect README duplication
+   - Flag verbosity issues
+6. **Check quality**:
+   - WHY explanations for rules
+   - Nesting depth
+7. **Cross-platform**:
+   - State directory hardcoding
+   - Claude-specific terminology
+   - AGENTS.md compatibility mention
+8. **Generate report** - Markdown table grouped by category
+
+## Detection Categories
+
+### HIGH Certainty
+
+| Pattern | Description |
+|---------|-------------|
+| missing_critical_rules | No critical/priority rules section |
+| missing_architecture | No architecture/structure overview |
+| missing_key_commands | No commands/scripts section |
+| broken_file_reference | Referenced file does not exist |
+| broken_command_reference | npm command not in package.json |
+| hardcoded_state_dir | Hardcoded .claude/ without alternatives |
+
+### MEDIUM Certainty
+
+| Pattern | Description |
+|---------|-------------|
+| readme_duplication | >40% overlap with README.md |
+| excessive_token_count | Exceeds 1500 token recommendation |
+| verbose_instructions | Long paragraphs, high avg line length |
+| missing_why | Rules without WHY explanations |
+| claude_only_terminology | Uses "Claude Code" without alternatives |
+| missing_agents_md_mention | CLAUDE.md doesn't note AGENTS.md compat |
+
+### LOW Certainty (advisory)
+
+| Pattern | Description |
+|---------|-------------|
+| example_overload | >10 code blocks/examples |
+| deep_nesting | >3 levels of hierarchy |
+
+## Output Format
+
+```markdown
+# Project Memory Analysis: CLAUDE.md
+
+**File**: /path/to/CLAUDE.md
+**Type**: CLAUDE.md
+**Analyzed**: 2026-01-23T...
+
+## Metrics
+
+| Metric | Value |
+|--------|-------|
+| Estimated Tokens | 1250 |
+| Characters | 5000 |
+| Lines | 120 |
+| Words | 850 |
+| README Overlap | 15% |
+
+## Summary
+
+| Certainty | Count |
+|-----------|-------|
+| HIGH | 2 |
+| MEDIUM | 3 |
+| **Total** | **5** |
+
+### Structure Issues (1)
+
+| Issue | Fix | Certainty |
+|-------|-----|-----------|
+| Missing key commands section | Add "## Key Commands" | HIGH |
+
+### Reference Issues (1)
+
+| Issue | Fix | Certainty |
+|-------|-----|-----------|
+| Broken file: docs/old.md | Update or remove | HIGH |
+
+### Efficiency Issues (2)
+
+| Issue | Fix | Certainty |
+|-------|-----|-----------|
+| 45% README overlap | Reference instead of duplicate | MEDIUM |
+| Estimated 1800 tokens | Condense to under 1500 | MEDIUM |
+
+### Cross-Platform Issues (1)
+
+| Issue | Fix | Certainty |
+|-------|-----|-----------|
+| Hardcoded .claude/ | Add platform variations note | HIGH |
+```
+
+## Implementation
+
+```javascript
+const { projectmemoryAnalyzer } = require('${CLAUDE_PLUGIN_ROOT}/lib/enhance');
+
+// Parse arguments
+const args = '$ARGUMENTS'.split(' ').filter(Boolean);
+const targetPath = args.find(a => !a.startsWith('--')) || '.';
+const verbose = args.includes('--verbose');
+
+// Run analysis
+const results = await projectmemoryAnalyzer.analyze(targetPath, {
+  verbose,
+  checkReferences: true
+});
+
+// Generate report
+const report = projectmemoryAnalyzer.generateReport(results);
+console.log(report);
+```
+
+## Example Usage
+
+```bash
+# Analyze current project
+/enhance:claudemd
+
+# Analyze specific directory
+/enhance:claudemd /path/to/project
+
+# Analyze specific file
+/enhance:claudemd /path/to/AGENTS.md
+
+# Verbose output (includes LOW certainty)
+/enhance:claudemd --verbose
+```
+
+## Cross-Tool Support
+
+Searches for project memory files in this order:
+1. CLAUDE.md (Claude Code)
+2. AGENTS.md (OpenCode, Codex)
+3. .github/CLAUDE.md
+4. .github/AGENTS.md
+
+## Pattern Statistics
+
+- Total patterns: 14
+- HIGH certainty: 6
+- MEDIUM certainty: 6
+- LOW certainty: 2
+- Auto-fixable: 0 (requires human judgment)
+
+## Success Criteria
+
+- Project memory file found and analyzed
+- All references validated against filesystem
+- Token efficiency measured
+- Cross-platform compatibility checked
+- Clear, actionable report generated
