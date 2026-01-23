@@ -1,7 +1,7 @@
 {
   "name": "awesome-slash",
   "description": "Professional-grade slash commands for Claude Code with cross-platform support (OpenCode, Codex CLI)",
-  "version": "2.8.3",
+  "version": "2.9.0",
   "owner": {
     "name": "Avi Fenesh",
     "url": "https://github.com/avifenesh"
@@ -13,42 +13,42 @@
       "name": "next-task",
       "source": "./plugins/next-task",
       "description": "Master workflow orchestrator: autonomous workflow with model optimization (opus/sonnet/haiku), two-file state management, workflow enforcement gates, 14 specialist agents",
-      "version": "2.8.3",
+      "version": "2.9.0",
       "category": "productivity"
     },
     {
       "name": "ship",
       "source": "./plugins/ship",
       "description": "Complete PR workflow: commit to production, skips review when called from next-task, removes task from registry on cleanup, automatic rollback",
-      "version": "2.8.3",
+      "version": "2.9.0",
       "category": "deployment"
     },
     {
       "name": "deslop-around",
       "source": "./plugins/deslop-around",
       "description": "3-phase AI slop detection: regex patterns (HIGH), multi-pass analyzers (MEDIUM), CLI tools (LOW)",
-      "version": "2.8.3",
+      "version": "2.9.0",
       "category": "development"
     },
     {
       "name": "project-review",
       "source": "./plugins/project-review",
       "description": "Multi-agent iterative code review until zero issues remain",
-      "version": "2.8.3",
+      "version": "2.9.0",
       "category": "development"
     },
     {
       "name": "reality-check",
       "source": "./plugins/reality-check",
       "description": "Deep repository analysis to realign project plans with code reality - detects drift, gaps, and creates prioritized reconstruction plans",
-      "version": "2.8.3",
+      "version": "2.9.0",
       "category": "productivity"
     },
     {
       "name": "enhance",
       "source": "./plugins/enhance",
       "description": "Master enhancement orchestrator: parallel analyzer execution for plugins, agents, docs, CLAUDE.md, and prompts with unified reporting",
-      "version": "2.8.3",
+      "version": "2.9.0",
       "category": "development"
     }
   ],

@@ -6,7 +6,7 @@ A cross-platform plugin providing powerful, zero-configuration slash commands fo
 
 [![npm](https://img.shields.io/npm/v/awesome-slash?color=red)](https://www.npmjs.com/package/awesome-slash)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-2.8.3-blue)](https://github.com/avifenesh/awesome-slash/releases)
+[![Version](https://img.shields.io/badge/version-2.9.0-blue)](https://github.com/avifenesh/awesome-slash/releases)
 [![GitHub stars](https://img.shields.io/github/stars/avifenesh/awesome-slash?style=flat&color=yellow)](https://github.com/avifenesh/awesome-slash/stargazers)
 [![Claude Code](https://img.shields.io/badge/Claude-Code%20Plugin-blue)](https://docs.anthropic.com/en/docs/claude-code)
 [![Codex CLI](https://img.shields.io/badge/Codex-CLI%20Compatible-green)](https://developers.openai.com/codex/cli)
@@ -15,6 +15,13 @@ A cross-platform plugin providing powerful, zero-configuration slash commands fo
 > **📋 Disclaimer**: This project originated from personal workflow needs and was made public due to its effective delivery. Usage is entirely at your own responsibility. The maintainers make no guarantees about fitness for any particular purpose. Context/token efficiency has not been formally benchmarked.
 
 > **💡 Model Recommendation**: Using **Opus** as the main agent model produces significantly better results and follows workflow phases more tightly. While Sonnet works for simpler tasks, Opus is recommended for complex multi-step workflows.
+
+## What's New in v2.9.0
+
+- **Gitignore Support** - File scanning now respects `.gitignore` patterns automatically
+- **Multi-Language Stub Detection** - Python, Rust, Java, Go support with 95% false positive reduction
+- **Java Dead Code Analysis** - Extended dead code detection to Java codebases
+- **Critical Bug Fixes** - Function name extraction, TypeScript matching, bracket balance tracking
 
 ## What's New in v2.8.0
 

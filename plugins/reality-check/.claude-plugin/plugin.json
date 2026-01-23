@@ -1,6 +1,6 @@
 {
   "name": "reality-check",
-  "version": "2.8.3",
+  "version": "2.9.0",
   "description": "Deep repository analysis to realign project plans with actual code reality - discovers drift, gaps, and produces prioritized reconstruction plans",
   "author": {
     "name": "Avi Fenesh",

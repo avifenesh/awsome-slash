@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.9.0] - 2025-01-23
+
+### Added
+- **Gitignore Support** - File scanning now respects `.gitignore` patterns
+  - New `parseGitignore()` function parses gitignore files and creates matcher
+  - `countSourceFiles()` respects gitignore by default (disable with `respectGitignore: false`)
+  - Supports all standard patterns: globs, directories, negation, globstar (`**`), anchored
+
+- **Multi-Language Stub Detection** - New multi-pass analyzer replaces regex-based detection
+  - Python: `return None`, `pass`, `...`, `raise NotImplementedError`
+  - Rust: `todo!()`, `unimplemented!()`, `panic!()`, `None`, `Vec::new()`
+  - Java: `return null`, `throw UnsupportedOperationException`, `Collections.emptyList()`
+  - Go: `return nil`, `panic()`, empty returns, typed slice/map literals
+  - 95% reduction in false positives compared to previous regex patterns
+
+- **Java Dead Code Support** - Extended `analyzeDeadCode` to detect unreachable code in Java
+  - Supports Java-specific patterns: `throw`, `return`, `break`, `continue`
+  - Respects Java block structures (try/catch/finally, switch/case)
+
+### Fixed
+- **Function Name Extraction** - Fixed bug where `export` and `async` keywords were captured as function names instead of actual function names in doc/code ratio analyzer
+- **TypeScript Language Matching** - Added fallback to ensure TypeScript files match JavaScript patterns
+- **Stub Pattern Exclude Globs** - Pattern exclude globs now properly honored in stub detection
+- **Multi-line Statement Detection** - Improved bracket balance tracking for all bracket types
+- **minConsecutiveLines Enforcement** - Block patterns now correctly require minimum consecutive lines
+
+### Changed
+- **Disabled placeholder_stub_returns_js** - Replaced with multi-pass `analyzeStubFunctions` (95% false positive rate in regex version)
+- **Removed generic_naming patterns** - Removed 4 patterns (JS, Python, Rust, Go) based on feedback that they weren't detecting real problems
+
 ## [2.8.3] - 2025-01-23
 
 ### Fixed
