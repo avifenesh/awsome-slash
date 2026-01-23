@@ -263,6 +263,32 @@ Deep repository analysis to identify where documented plans diverge from actual 
 - **~77% token reduction** - Efficient compared to multi-agent approach
 
 
+### `/enhance` - Master Enhancement Orchestrator
+
+Run all enhancement analyzers in parallel and generate a unified report.
+
+```bash
+/enhance                          # Full analysis of current directory
+/enhance --focus=agent            # Run specific enhancer only
+/enhance --apply                  # Apply auto-fixes for HIGH certainty issues
+/enhance plugins/ --verbose       # Analyze with all issues shown
+```
+
+**Enhancers:**
+- plugin - Plugin structures, MCP tools, security patterns
+- agent - Agent prompts, frontmatter, tool restrictions
+- claudemd - CLAUDE.md/AGENTS.md project memory files
+- docs - Documentation structure and RAG optimization
+- prompt - General prompt quality and clarity
+
+**Output:**
+- Unified report with findings from all enhancers
+- Deduplicated issues sorted by certainty level
+- Auto-fixable issues highlighted
+- Clear executive summary with counts
+
+---
+
 ### `/enhance:plugin` - Plugin Structure Analyzer
 
 Analyze plugin structures, MCP tools, and security patterns against best practices.
@@ -435,7 +461,7 @@ Override with `AI_STATE_DIR` environment variable.
 }
 ```
 
-### Specialist Agents (14 Total)
+### Specialist Agents (16 Total)
 
 **Core Workflow (Opus - Complex Tasks):**
 | Agent | Purpose |
@@ -468,6 +494,13 @@ Override with `AI_STATE_DIR` environment variable.
 | plan-synthesizer | Deep semantic analysis with full context (opus) |
 
 *Data collection handled by JavaScript collectors (lib/reality-check/collectors.js)*
+
+**Enhancement Analyzers (Sonnet - Code Quality):**
+| Agent | Purpose |
+|-------|---------|
+| enhancement-orchestrator | Coordinate parallel enhancer execution and aggregate results |
+| enhancement-reporter | Generate unified reports with deduplication |
+
 
 ---
 

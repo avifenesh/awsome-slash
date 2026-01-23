@@ -130,7 +130,7 @@ awesome-slash  # Select option 1
 
 **Location:** `~/.claude/plugins/awesome-slash/`
 
-**Commands:** `/next-task`, `/ship`, `/deslop-around`, `/project-review`, `/reality-check:scan`
+**Commands:** `/next-task`, `/ship`, `/deslop-around`, `/project-review`, `/reality-check:scan`, `/enhance`
 
 ### OpenCode
 
@@ -142,7 +142,7 @@ awesome-slash  # Select option 2
 - Config: `~/.config/opencode/opencode.json`
 - Commands: `~/.opencode/commands/awesome-slash/`
 
-**Commands:** `/next-task`, `/ship`, `/deslop-around`, `/project-review`, `/reality-check-scan`
+**Commands:** `/next-task`, `/ship`, `/deslop-around`, `/project-review`, `/reality-check-scan`, `/enhance`
 
 **MCP Config Added:**
 ```json
@@ -170,7 +170,7 @@ awesome-slash  # Select option 3
 - Config: `~/.codex/config.toml`
 - Skills: `~/.codex/skills/`
 
-**Skills:** `$next-task`, `$ship`, `$deslop-around`, `$project-review`, `$reality-check-scan`
+**Skills:** `$next-task`, `$ship`, `$deslop-around`, `$project-review`, `$reality-check-scan`, `$enhance`
 
 Note: Codex uses `$` prefix instead of `/`.
 
@@ -201,6 +201,7 @@ enabled = true
 | `/deslop-around` | ✅ Full | ✅ Full | ✅ Full | Uses pipeline.js |
 | `/project-review` | ✅ Full | ✅ Full | ✅ Full | Multi-agent review |
 | `/reality-check:scan` | ✅ Full | ✅ Full | ✅ Full | JS collectors + Opus |
+| `/enhance` | ✅ Full | ✅ Full | ✅ Full | Orchestrates all enhancers |
 
 ## Knowledge Base
 
