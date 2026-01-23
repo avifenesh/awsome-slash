@@ -24,7 +24,7 @@ awesome-slash
 
 ### Core Components
 
-```
+```text
 awesome-slash/
 ├── lib/                          # Shared library
 │   ├── cross-platform/           # Platform utilities

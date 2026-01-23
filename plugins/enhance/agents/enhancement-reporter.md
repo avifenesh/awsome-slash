@@ -281,28 +281,65 @@ No issues found across {n} enhancers.
 | docs | 8 |
 ```
 
-<constraints>
-## Constraints
+## Examples
 
-- Always show executive summary table
-- HIGH issues first, then MEDIUM, then LOW (if verbose)
-- Mark auto-fixable with [AF] or Yes/No column
-- Include line numbers when available (use '-' if not)
-- Deduplicate before counting
-- Note when issue found by multiple enhancers
-- Use consistent table formatting throughout
-- Keep report actionable - focus on fixes, not problems
-</constraints>
+<example title="Deduplication scenario">
+**Input**: Two findings from different enhancers about the same issue:
+```json
+[
+  { "file": "agent.md", "line": 3, "issue": "Unrestricted Bash", "source": "agent" },
+  { "file": "agent.md", "line": 3, "issue": "unrestricted bash", "source": "plugin" }
+]
+```
 
-## Example: Deduplicated Output
-
-When same issue found by multiple enhancers:
-
+**Output**: Single entry with merged sources:
 ```markdown
 | File | Line | Issue | Fix | Found By |
 |------|------|-------|-----|----------|
 | agent.md | 3 | Unrestricted Bash | Bash(git:*) | agent, plugin |
 ```
+</example>
+
+<example title="Clean report">
+**Input**: Empty findings array
+
+**Output**:
+```markdown
+## Status: Clean
+
+No issues found across 5 enhancers.
+```
+</example>
+
+<example title="Mixed certainty findings">
+**Input**: 2 HIGH, 5 MEDIUM, 3 LOW findings
+
+**Output structure**:
+1. Executive Summary table (shows all counts)
+2. HIGH Certainty section (2 issues with [AF] column)
+3. MEDIUM Certainty section (5 issues)
+4. LOW Certainty section (only if verbose=true)
+5. Auto-Fix Summary (if any HIGH issues are auto-fixable)
+</example>
+
+<constraints>
+## Constraints
+
+- Always show executive summary table
+  *WHY: Provides at-a-glance understanding of scope*
+- HIGH issues first, then MEDIUM, then LOW (if verbose)
+  *WHY: Users should see critical issues immediately*
+- Mark auto-fixable with [AF] or Yes/No column
+  *WHY: Users need to quickly identify actionable fixes*
+- Include line numbers when available (use '-' if not)
+  *WHY: Enables quick navigation in editors*
+- Deduplicate before counting
+  *WHY: Prevents confusion and inflated counts*
+- Note when issue found by multiple enhancers
+  *WHY: Shows confidence - multiple sources = higher confidence*
+- Use consistent table formatting throughout
+- Keep report actionable - focus on fixes, not problems
+</constraints>
 
 ## Quality Multiplier
 

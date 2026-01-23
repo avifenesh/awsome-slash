@@ -21,7 +21,7 @@ You are the master orchestrator that:
 
 ## Argument Parsing
 
-Parse from `$ARGUMENTS`:
+Parse and validate `$ARGUMENTS`:
 
 ```javascript
 const args = '$ARGUMENTS'.split(' ').filter(Boolean);
@@ -33,6 +33,22 @@ const targetPath = args.find(a => !a.startsWith('--')) || '.';
 const applyFixes = args.includes('--apply');
 const focusType = args.find(a => a.startsWith('--focus='))?.split('=')[1];
 const verbose = args.includes('--verbose');
+
+// --- Input Validation ---
+const VALID_FOCUS_TYPES = ['plugin', 'agent', 'claudemd', 'docs', 'prompt'];
+const VALID_FLAGS = ['--apply', '--verbose', '--focus='];
+
+// Validate focus type if provided
+if (focusType && !VALID_FOCUS_TYPES.includes(focusType)) {
+  console.error(`Invalid --focus type: "${focusType}". Valid: ${VALID_FOCUS_TYPES.join(', ')}`);
+  return;
+}
+
+// Warn on unknown flags
+const unknownFlags = args.filter(a => a.startsWith('--') && !VALID_FLAGS.some(f => a.startsWith(f)));
+if (unknownFlags.length > 0) {
+  console.warn(`Unknown flags ignored: ${unknownFlags.join(', ')}`);
+}
 ```
 
 **Supported flags:**
@@ -318,6 +334,40 @@ The orchestrator produces a unified report (via enhancement-reporter):
 [...]
 ```
 
+## Examples
+
+<example title="Full analysis with findings">
+**Input**: `/enhance plugins/my-plugin`
+
+**Discovery Phase**:
+- Found plugins/my-plugin/plugin.json → run plugin-enhancer
+- Found plugins/my-plugin/agents/*.md → run agent-enhancer
+- No CLAUDE.md found → skip claudemd-enhancer
+- Found plugins/my-plugin/docs/*.md → run docs-enhancer
+- Found plugins/my-plugin/commands/*.md → run prompt-enhancer
+
+**Output**: Unified report with 5 HIGH, 8 MEDIUM issues from 4 enhancers
+</example>
+
+<example title="Focused analysis">
+**Input**: `/enhance --focus=agent`
+
+**Behavior**: Only run agent-enhancer, skip all others regardless of what exists in target path.
+
+**Output**: Report containing only agent-related findings
+</example>
+
+<example title="No issues found">
+**Input**: `/enhance plugins/well-maintained`
+
+**Output**:
+```markdown
+## Status: Clean
+
+No issues found. All plugins, agents, and docs follow best practices.
+```
+</example>
+
 <constraints>
 ## Constraints
 
@@ -328,7 +378,9 @@ The orchestrator produces a unified report (via enhancement-reporter):
 - Auto-fixes only applied with explicit --apply flag
 - Never apply fixes for MEDIUM or LOW certainty issues
 - Deduplicate findings that appear in multiple enhancers
+  *WHY: Prevents redundant fixes and improves report readability*
 - Report execution time for each enhancer
+  *WHY: Helps identify performance bottlenecks*
 </constraints>
 
 ## Example Usage
