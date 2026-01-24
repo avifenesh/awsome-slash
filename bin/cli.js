@@ -504,8 +504,9 @@ AI_STATE_DIR = ".codex"
       let content = fs.readFileSync(srcPath, 'utf8');
 
       // Check if file has existing YAML frontmatter
-      // Escape description for YAML: wrap in double quotes, escape internal quotes
-      const yamlDescription = `"${description.replace(/"/g, '\\"')}"`;
+      // Escape description for YAML: wrap in double quotes, escape backslashes and internal quotes
+      const escapedDescription = description.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      const yamlDescription = `"${escapedDescription}"`;
 
       if (content.startsWith('---')) {
         // Replace existing frontmatter with Codex-compatible format
