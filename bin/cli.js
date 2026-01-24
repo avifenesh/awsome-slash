@@ -268,28 +268,88 @@ function installForOpenCode(installDir) {
     }
   }
 
-  // Transform agent files in-place for OpenCode compatibility
-  console.log('  Transforming agents for OpenCode...');
+  // Install agents to global OpenCode location
+  // OpenCode looks for agents in ~/.opencode/agents/ (global) or .opencode/agent/ (per-project)
+  const agentsDir = path.join(home, '.opencode', 'agents');
+  fs.mkdirSync(agentsDir, { recursive: true });
+
+  console.log('  Installing agents for OpenCode...');
   const pluginDirs = ['next-task', 'enhance', 'project-review', 'reality-check', 'ship', 'deslop-around'];
+  let agentCount = 0;
+
   for (const pluginName of pluginDirs) {
-    const agentsDir = path.join(installDir, 'plugins', pluginName, 'agents');
-    if (fs.existsSync(agentsDir)) {
-      const agentFiles = fs.readdirSync(agentsDir).filter(f => f.endsWith('.md'));
+    const srcAgentsDir = path.join(installDir, 'plugins', pluginName, 'agents');
+    if (fs.existsSync(srcAgentsDir)) {
+      const agentFiles = fs.readdirSync(srcAgentsDir).filter(f => f.endsWith('.md'));
       for (const agentFile of agentFiles) {
-        const agentPath = path.join(agentsDir, agentFile);
-        let content = fs.readFileSync(agentPath, 'utf8');
-        const transformed = transformForOpenCode(content);
-        if (transformed !== content) {
-          fs.writeFileSync(agentPath, transformed);
-        }
+        const srcPath = path.join(srcAgentsDir, agentFile);
+        const destPath = path.join(agentsDir, agentFile);
+        let content = fs.readFileSync(srcPath, 'utf8');
+
+        // Transform for OpenCode
+        content = transformForOpenCode(content);
+
+        // Transform agent frontmatter from Claude format to OpenCode format
+        // Claude: tools: Bash(git:*), Read, Write
+        // OpenCode: permission: { read: allow, edit: allow, bash: allow }
+        content = content.replace(
+          /^---\n([\s\S]*?)^---/m,
+          (match, frontmatter) => {
+            // Parse existing frontmatter
+            const lines = frontmatter.trim().split('\n');
+            const parsed = {};
+            for (const line of lines) {
+              const colonIdx = line.indexOf(':');
+              if (colonIdx > 0) {
+                const key = line.substring(0, colonIdx).trim();
+                const value = line.substring(colonIdx + 1).trim();
+                parsed[key] = value;
+              }
+            }
+
+            // Build OpenCode frontmatter
+            let opencodeFrontmatter = '---\n';
+            if (parsed.name) opencodeFrontmatter += `name: ${parsed.name}\n`;
+            if (parsed.description) opencodeFrontmatter += `description: ${parsed.description}\n`;
+            opencodeFrontmatter += 'mode: subagent\n';
+
+            // Map model names
+            if (parsed.model) {
+              const modelMap = {
+                'sonnet': 'anthropic/claude-sonnet-4',
+                'opus': 'anthropic/claude-opus-4',
+                'haiku': 'anthropic/claude-haiku-3-5'
+              };
+              opencodeFrontmatter += `model: ${modelMap[parsed.model] || parsed.model}\n`;
+            }
+
+            // Convert tools to permissions
+            if (parsed.tools) {
+              opencodeFrontmatter += 'permission:\n';
+              const tools = parsed.tools.toLowerCase();
+              opencodeFrontmatter += `  read: ${tools.includes('read') ? 'allow' : 'deny'}\n`;
+              opencodeFrontmatter += `  edit: ${tools.includes('edit') || tools.includes('write') ? 'allow' : 'deny'}\n`;
+              opencodeFrontmatter += `  bash: ${tools.includes('bash') ? 'allow' : 'ask'}\n`;
+              opencodeFrontmatter += `  glob: ${tools.includes('glob') ? 'allow' : 'deny'}\n`;
+              opencodeFrontmatter += `  grep: ${tools.includes('grep') ? 'allow' : 'deny'}\n`;
+            }
+
+            opencodeFrontmatter += '---';
+            return opencodeFrontmatter;
+          }
+        );
+
+        fs.writeFileSync(destPath, content);
+        agentCount++;
       }
     }
   }
-  console.log('  ✓ Agents transformed for OpenCode');
+  console.log(`  ✓ Installed ${agentCount} agents to ${agentsDir}`);
 
   console.log('✅ OpenCode installation complete!');
   console.log(`   Config: ${configPath}`);
   console.log(`   Commands: ${commandsDir}`);
+  console.log(`   Agents: ${agentsDir}`);
   console.log(`   Plugin: ${pluginDir}`);
   console.log('   Access via: /next-task, /ship, /deslop-around, /project-review, /reality-check-scan, /enhance');
   console.log('   MCP tools: workflow_status, workflow_start, workflow_resume, task_discover, review_code, slop_detect, enhance_analyze');
