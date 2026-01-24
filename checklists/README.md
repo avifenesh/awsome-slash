@@ -6,11 +6,13 @@ Action-specific checklists to ensure consistency across the codebase.
 
 | Checklist | When to Use |
 |-----------|-------------|
+| [cross-platform-compatibility.md](./cross-platform-compatibility.md) | **MASTER REF** - Ensuring features work on Claude/OpenCode/Codex |
 | [release.md](./release.md) | Preparing a new version release |
 | [new-command.md](./new-command.md) | Adding a new slash command |
 | [new-agent.md](./new-agent.md) | Adding a new specialist agent |
 | [new-lib-module.md](./new-lib-module.md) | Adding a new library module |
 | [update-mcp.md](./update-mcp.md) | Adding/updating MCP server tools |
+| [update-opencode-plugin.md](./update-opencode-plugin.md) | Updating native OpenCode plugin |
 
 ## Knowledge Base References
 

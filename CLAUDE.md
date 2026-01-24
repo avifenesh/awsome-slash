@@ -20,6 +20,7 @@ Quick reference for AI assistants. Follow links for details.
    *WHY: Skipping comments leads to merged issues. Every comment must be addressed or explained.*
 
 5. **Read checklists BEFORE multi-file changes** - MUST read the relevant checklist before starting:
+   - **Cross-platform work → `checklists/cross-platform-compatibility.md`** (MASTER REF)
    - Release → `checklists/release.md`
    - New command → `checklists/new-command.md`
    - New agent → `checklists/new-agent.md`
