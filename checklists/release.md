@@ -93,6 +93,11 @@ git add -A && git commit -m "chore: release vX.Y.Z"
 # Create and push tag (triggers GitHub Actions)
 git tag vX.Y.Z
 git push origin main --tags
+
+# Pre-release tags (publish to npm tag + prerelease GH)
+git tag vX.Y.Z-rc.1    # npm tag: rc
+git tag vX.Y.Z-beta.1  # npm tag: beta
+git push origin main --tags
 ```
 
 ## Post-Release Verification

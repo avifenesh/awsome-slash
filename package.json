@@ -26,9 +26,10 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "validate": "npm run validate:plugins && npm run validate:cross-platform",
+    "validate": "npm run validate:plugins && npm run validate:cross-platform && npm run validate:consistency",
     "validate:plugins": "node scripts/validate-plugins.js",
     "validate:cross-platform": "node scripts/validate-cross-platform.js",
+    "validate:consistency": "node scripts/validate-repo-consistency.js",
     "detect": "node lib/platform/detect-platform.js",
     "verify": "node lib/platform/verify-tools.js",
     "prepare": "node scripts/setup-hooks.js"

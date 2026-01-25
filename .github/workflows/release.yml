@@ -27,6 +27,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
+      npm_tag: ${{ steps.version.outputs.npm_tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,9 +49,22 @@ jobs:
             VERSION=$(node -p "require('./package.json').version")
             TAG="v${VERSION}"
           fi
+          if [[ "$VERSION" == *"-"* ]]; then
+            PRE_ID="${VERSION#*-}"
+            PRE_ID="${PRE_ID%%.*}"
+            case "$PRE_ID" in
+              beta) NPM_TAG="beta";;
+              rc) NPM_TAG="rc";;
+              *) NPM_TAG="next";;
+            esac
+          else
+            NPM_TAG="latest"
+          fi
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "npm_tag=${NPM_TAG}" >> $GITHUB_OUTPUT
           echo "📦 Release version: ${VERSION} (tag: ${TAG})"
+          echo "📦 npm tag: ${NPM_TAG}"
 
       - name: Validate version format
         run: |
@@ -139,7 +153,7 @@ jobs:
 
       - name: Publish to npm
         if: ${{ !inputs.dry_run }}
-        run: npm publish --provenance --access public
+        run: npm publish --provenance --access public --tag "${{ needs.validate.outputs.npm_tag }}"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -147,7 +161,7 @@ jobs:
         if: ${{ inputs.dry_run }}
         run: |
           echo "🏃 Dry run - skipping actual publish"
-          npm publish --dry-run
+          npm publish --dry-run --tag "${{ needs.validate.outputs.npm_tag }}"
 
   create-release:
     name: Create GitHub Release

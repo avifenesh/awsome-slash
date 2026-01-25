@@ -26,6 +26,21 @@ git push origin main --tags
 
 The workflow triggers automatically on tag push.
 
+### Pre-release Channels (rc / beta)
+
+Use pre-release tags to publish to npm without moving `latest`:
+
+```bash
+git tag vX.Y.Z-rc.1
+git tag vX.Y.Z-beta.1
+git push origin main --tags
+```
+
+Behavior:
+- `-rc.*` publishes to npm tag `rc` and creates a prerelease on GitHub.
+- `-beta.*` publishes to npm tag `beta` and creates a prerelease on GitHub.
+- Stable tags (`vX.Y.Z`) publish to npm `latest`.
+
 ### Option 2: Manual Dispatch
 
 1. Go to **Actions** → **Release** workflow
@@ -78,6 +93,7 @@ grep -r '"version"' package.json .claude-plugin/ plugins/*/.claude-plugin/ mcp-s
 - **Patch (x.x.X)**: Bug fixes, security patches, docs updates
 - **Minor (x.X.0)**: New features, non-breaking changes
 - **Major (X.0.0)**: Breaking changes, API changes
+- **RC/Beta (x.y.z-rc.N / x.y.z-beta.N)**: Pre-release validation before stable
 
 ---
 
