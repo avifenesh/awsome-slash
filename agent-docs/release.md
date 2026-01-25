@@ -28,7 +28,7 @@ The workflow triggers automatically on tag push.
 
 ### Pre-release Channels (rc / beta)
 
-Use pre-release tags to publish to npm without moving `latest`:
+Use pre-release tags to publish to npm without moving `latest`. The tag must point to a commit where all version fields have already been bumped to the prerelease version (e.g., `X.Y.Z-rc.N`).
 
 ```bash
 git tag vX.Y.Z-rc.1

@@ -90,7 +90,11 @@ jobs:
           fi
 
           # Check MCP server
-          MCP_VERSION=$(grep "version:" mcp-server/index.js | head -1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+")
+          MCP_VERSION=$(node -e "const fs=require('fs');const content=fs.readFileSync('mcp-server/index.js','utf8');const match=content.match(/version:\s*'([^']+)'/);console.log(match?match[1]:'');")
+          if [ -z "$MCP_VERSION" ]; then
+            echo "❌ mcp-server/index.js version not found"
+            exit 1
+          fi
           if [ "$MCP_VERSION" != "$VERSION" ]; then
             echo "❌ mcp-server/index.js version ($MCP_VERSION) doesn't match release version ($VERSION)"
             exit 1

@@ -358,7 +358,7 @@ Three phases run in sequence:
 
 **What happens when you run it:**
 
-Up to 8 specialized role-based agents run based on your project:
+Up to 8 specialized role-based agents run based on your project: <!-- AGENT_COUNT_ROLE_BASED: 8 -->
 
 | Agent | When Active | Focus Area |
 |-------|-------------|------------|

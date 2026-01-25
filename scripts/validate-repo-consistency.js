@@ -7,6 +7,20 @@ const ROOT_DIR = path.join(__dirname, '..');
 const PLUGINS_DIR = path.join(ROOT_DIR, 'plugins');
 
 const errors = [];
+const PLUGINS_ROOT = path.resolve(PLUGINS_DIR);
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function decodeString(value) {
+  return value.replace(/\\\\/g, '\\').replace(/\\'/g, "'");
+}
+
+function isPathWithin(baseDir, targetPath) {
+  const relative = path.relative(baseDir, targetPath);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
 
 function readJson(filePath, label) {
   try {
@@ -28,10 +42,11 @@ function listPluginDirs() {
 }
 
 function extractArrayBlock(content, variableName) {
-  const needle = `const ${variableName} = [`;
-  const startIndex = content.indexOf(needle);
-  if (startIndex === -1) return null;
-  const openIndex = content.indexOf('[', startIndex);
+  const namePattern = escapeRegExp(variableName);
+  const assignmentRegex = new RegExp(`\\b(?:const|let|var)\\s+${namePattern}\\s*=\\s*\\[`, 'm');
+  const match = assignmentRegex.exec(content);
+  if (!match) return null;
+  const openIndex = content.indexOf('[', match.index);
   if (openIndex === -1) return null;
 
   let depth = 0;
@@ -50,18 +65,22 @@ function extractArrayBlock(content, variableName) {
 function extractStringArray(content, variableName) {
   const block = extractArrayBlock(content, variableName);
   if (!block) return null;
-  const matches = [...block.matchAll(/'([^']+)'/g)].map(match => match[1]);
-  return matches;
+  const regex = /'((?:\\.|[^'\\])*)'/g;
+  return [...block.matchAll(regex)].map(match => decodeString(match[1]));
 }
 
 function extractCommandMappings(content) {
   const block = extractArrayBlock(content, 'commandMappings');
   if (!block) return null;
   const entries = [];
-  const regex = /\[\s*'([^']+)'\s*,\s*'([^']+)'\s*,\s*'([^']+)'\s*\]/g;
+  const regex = /\[\s*'((?:\\.|[^'\\])*)'\s*,\s*'((?:\\.|[^'\\])*)'\s*,\s*'((?:\\.|[^'\\])*)'\s*\]/g;
   let match;
   while ((match = regex.exec(block)) !== null) {
-    entries.push({ target: match[1], plugin: match[2], source: match[3] });
+    entries.push({
+      target: decodeString(match[1]),
+      plugin: decodeString(match[2]),
+      source: decodeString(match[3])
+    });
   }
   return entries;
 }
@@ -70,10 +89,14 @@ function extractSkillMappings(content) {
   const block = extractArrayBlock(content, 'skillMappings');
   if (!block) return null;
   const entries = [];
-  const regex = /\[\s*'([^']+)'\s*,\s*'([^']+)'\s*,\s*'([^']+)'\s*,\s*'[^']*'\s*\]/g;
+  const regex = /\[\s*'((?:\\.|[^'\\])*)'\s*,\s*'((?:\\.|[^'\\])*)'\s*,\s*'((?:\\.|[^'\\])*)'\s*,\s*'((?:\\.|[^'\\])*)'\s*\]/g;
   let match;
   while ((match = regex.exec(block)) !== null) {
-    entries.push({ skill: match[1], plugin: match[2], source: match[3] });
+    entries.push({
+      skill: decodeString(match[1]),
+      plugin: decodeString(match[2]),
+      source: decodeString(match[3])
+    });
   }
   return entries;
 }
@@ -232,7 +255,12 @@ function validateMappings() {
       seenTargets.add(entry.target);
 
       const srcPath = path.join(PLUGINS_DIR, entry.plugin, 'commands', entry.source);
-      if (!fs.existsSync(srcPath)) {
+      const resolvedPath = path.resolve(srcPath);
+      if (!isPathWithin(PLUGINS_ROOT, resolvedPath)) {
+        errors.push(`commandMappings path traversal: ${entry.plugin}/${entry.source}`);
+        continue;
+      }
+      if (!fs.existsSync(resolvedPath)) {
         errors.push(`commandMappings missing source: ${entry.plugin}/${entry.source}`);
       }
     }
@@ -248,7 +276,12 @@ function validateMappings() {
       seenSkills.add(entry.skill);
 
       const srcPath = path.join(PLUGINS_DIR, entry.plugin, 'commands', entry.source);
-      if (!fs.existsSync(srcPath)) {
+      const resolvedPath = path.resolve(srcPath);
+      if (!isPathWithin(PLUGINS_ROOT, resolvedPath)) {
+        errors.push(`skillMappings path traversal: ${entry.plugin}/${entry.source}`);
+        continue;
+      }
+      if (!fs.existsSync(resolvedPath)) {
         errors.push(`skillMappings missing source: ${entry.plugin}/${entry.source}`);
       }
       if (!commandMapSet.has(`${entry.plugin}/${entry.source}`)) {
@@ -276,9 +309,12 @@ function validateAgentCounts() {
 
   if (fs.existsSync(agentsDocPath)) {
     const content = fs.readFileSync(agentsDocPath, 'utf8');
-    const totalMatch = content.match(/\*\*TL;DR:\*\*\s*(\d+) agents/);
-    const fileMatch = content.match(/File-based agents(?:\*\*)?\s*\((\d+)\)/);
-    const roleMatch = content.match(/Role-based agents(?:\*\*)?\s*\((\d+)\)/);
+    const totalMatch = content.match(/<!--\s*AGENT_COUNT_TOTAL:\s*(\d+)\s*-->/)
+      || content.match(/\*\*TL;DR:\*\*\s*(\d+) agents/);
+    const fileMatch = content.match(/<!--\s*AGENT_COUNT_FILE_BASED:\s*(\d+)\s*-->/)
+      || content.match(/File-based agents(?:\*\*)?\s*\((\d+)\)/);
+    const roleMatch = content.match(/<!--\s*AGENT_COUNT_ROLE_BASED:\s*(\d+)\s*-->/)
+      || content.match(/Role-based agents(?:\*\*)?\s*\((\d+)\)/);
 
     if (!totalMatch || Number(totalMatch[1]) !== totalCount) {
       errors.push(`docs/reference/AGENTS.md total count mismatch (${totalMatch ? totalMatch[1] : 'missing'} vs ${totalCount})`);
@@ -293,7 +329,8 @@ function validateAgentCounts() {
 
   if (fs.existsSync(docsIndexPath)) {
     const content = fs.readFileSync(docsIndexPath, 'utf8');
-    const match = content.match(/All\s+(\d+)\s+agents/);
+    const match = content.match(/<!--\s*AGENT_COUNT_TOTAL:\s*(\d+)\s*-->/)
+      || content.match(/All\s+(\d+)\s+agents/);
     if (!match || Number(match[1]) !== totalCount) {
       errors.push(`docs/README.md agent count mismatch (${match ? match[1] : 'missing'} vs ${totalCount})`);
     }
@@ -301,7 +338,8 @@ function validateAgentCounts() {
 
   if (fs.existsSync(readmePath)) {
     const content = fs.readFileSync(readmePath, 'utf8');
-    const match = content.match(/Up to\s+(\d+)\s+specialized role-based agents/);
+    const match = content.match(/<!--\s*AGENT_COUNT_ROLE_BASED:\s*(\d+)\s*-->/)
+      || content.match(/Up to\s+(\d+)\s+specialized role-based agents/);
     if (!match || Number(match[1]) !== roleBasedCount) {
       errors.push(`README.md role-based agent count mismatch (${match ? match[1] : 'missing'} vs ${roleBasedCount})`);
     }
