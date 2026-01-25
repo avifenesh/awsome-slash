@@ -220,20 +220,25 @@ if (workflowState) {
 }
 ```
 
-When running standalone, launch 3 review agents in parallel:
+When running standalone, launch core review passes in parallel (error handling is part of code quality):
 
 ```javascript
-// 1. Code Reviewer
-Task({ subagent_type: "pr-review-toolkit:code-reviewer", prompt: `Review PR #${PR_NUMBER}...` })
+const reviewPasses = [
+  { id: 'code-quality', role: 'code quality reviewer' },
+  { id: 'security', role: 'security reviewer' },
+  { id: 'performance', role: 'performance reviewer' },
+  { id: 'test-coverage', role: 'test coverage reviewer' }
+];
 
-// 2. Silent Failure Hunter
-Task({ subagent_type: "pr-review-toolkit:silent-failure-hunter", prompt: `Review PR #${PR_NUMBER}...` })
-
-// 3. Test Analyzer
-Task({ subagent_type: "pr-review-toolkit:pr-test-analyzer", prompt: `Review PR #${PR_NUMBER}...` })
+// Add specialists based on repo signals (db, architecture, api, frontend, backend, devops)
+// Then launch in parallel:
+reviewPasses.map(pass => Task({
+  subagent_type: "review",
+  prompt: `Role: ${pass.role}. Review PR #${PR_NUMBER} and return JSON findings.`
+}));
 ```
 
-Iterate until all critical/high issues resolved (max 3 iterations).
+Iterate until no non-false-positive issues remain (max 3 iterations if running standalone).
 
 ## Phase 6: Merge PR
 

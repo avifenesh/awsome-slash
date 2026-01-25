@@ -74,7 +74,7 @@ This means you can run `/deslop apply` and trust that it won't break things.
 
 ### 2. Review Loops Without Limits
 
-The review-orchestrator agent doesn't have a max iteration count. It keeps running code-reviewer, silent-failure-hunter, and test-analyzer until there are zero critical or high-severity issues. Then it runs deslop-work on its own fixes to catch any AI artifacts it introduced.
+The review-orchestrator agent runs core review passes (code quality, security, performance, test coverage) plus conditional specialists until there are no open issues. Then it runs deslop-work on its own fixes to catch any AI artifacts it introduced.
 
 ### 3. Workflow Enforcement
 
@@ -358,26 +358,29 @@ Three phases run in sequence:
 
 **What happens when you run it:**
 
-Up to 8 specialized role-based agents run based on your project: <!-- AGENT_COUNT_ROLE_BASED: 8 -->
+Up to 10 specialized role-based agents run based on your project: <!-- AGENT_COUNT_ROLE_BASED: 10 -->
 
 | Agent | When Active | Focus Area |
 |-------|-------------|------------|
+| code-quality-reviewer | Always | Code quality, error handling |
 | security-expert | Always | Vulnerabilities, auth, secrets |
 | performance-engineer | Always | N+1 queries, memory, blocking ops |
-| test-quality-guardian | If tests exist | Coverage, edge cases, mocking |
+| test-quality-guardian | Always | Coverage, edge cases, mocking |
 | architecture-reviewer | If 50+ files | Modularity, patterns, SOLID |
 | database-specialist | If DB detected | Queries, indexes, transactions |
 | api-designer | If API detected | REST, errors, pagination |
 | frontend-specialist | If frontend detected | Components, state, UX |
+| backend-specialist | If backend detected | Services, domain logic |
 | devops-reviewer | If CI/CD detected | Pipelines, configs, secrets |
 
-Findings are collected and categorized by severity (critical/high/medium/low). Critical and high issues get fixed automatically. The loop repeats until no critical or high issues remain.
+Findings are collected and categorized by severity (critical/high/medium/low). All non-false-positive issues get fixed automatically. The loop repeats until no open issues remain.
 
 **Usage:**
 
 ```bash
 /audit-project                   # Full review
 /audit-project --quick           # Single pass
+/audit-project --resume          # Resume from queue file
 /audit-project --domain security # Security focus only
 /audit-project --recent          # Only recent changes
 ```

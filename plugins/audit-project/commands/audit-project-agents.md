@@ -12,14 +12,68 @@ Each agent reviews only relevant files:
 
 | Agent | File Patterns |
 |-------|--------------|
+| code-quality-reviewer | All source files (includes error handling) |
 | security-expert | Auth, validation, API endpoints, config |
 | performance-engineer | Hot paths, algorithms, loops, queries |
-| test-quality-guardian | Test files only |
-| architecture-reviewer | All source files |
+| test-quality-guardian | Test files + missing-test signals |
+| architecture-reviewer | Cross-module boundaries, core packages |
 | database-specialist | Models, queries, migrations |
 | api-designer | API routes, controllers, handlers |
 | frontend-specialist | Components, state management |
+| backend-specialist | Services, domain logic, queues |
 | devops-reviewer | CI/CD configs, Dockerfiles |
+
+## Review Queue File
+
+Create a temporary review queue file in the platform state dir. Review passes append JSONL or return JSON for the parent to write.
+
+```javascript
+const path = require('path');
+const fs = require('fs');
+const { getStateDirPath } = require('${CLAUDE_PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/platform/state-dir.js');
+
+const stateDirPath = getStateDirPath(process.cwd());
+if (!fs.existsSync(stateDirPath)) {
+  fs.mkdirSync(stateDirPath, { recursive: true });
+}
+
+function findLatestQueue(dirPath) {
+  const files = fs.readdirSync(dirPath)
+    .filter(name => name.startsWith('review-queue-') && name.endsWith('.json'))
+    .map(name => ({
+      name,
+      fullPath: path.join(dirPath, name),
+      mtime: fs.statSync(path.join(dirPath, name)).mtimeMs
+    }))
+    .sort((a, b) => b.mtime - a.mtime);
+  return files[0]?.fullPath || null;
+}
+
+const resumeRequested = typeof RESUME_MODE !== 'undefined' && RESUME_MODE === 'true';
+let reviewQueuePath = resumeRequested ? findLatestQueue(stateDirPath) : null;
+
+if (!reviewQueuePath) {
+  reviewQueuePath = path.join(stateDirPath, `review-queue-${Date.now()}.json`);
+}
+
+if (!fs.existsSync(reviewQueuePath)) {
+  const reviewQueue = {
+    status: 'open',
+    scope: { type: 'audit', value: SCOPE },
+    passes: [],
+    items: [],
+    iteration: 0,
+    updatedAt: new Date().toISOString()
+  };
+  fs.writeFileSync(reviewQueuePath, JSON.stringify(reviewQueue, null, 2), 'utf8');
+} else if (resumeRequested) {
+  const reviewQueue = JSON.parse(fs.readFileSync(reviewQueuePath, 'utf8'));
+  reviewQueue.status = 'open';
+  reviewQueue.resumedAt = new Date().toISOString();
+  reviewQueue.updatedAt = new Date().toISOString();
+  fs.writeFileSync(reviewQueuePath, JSON.stringify(reviewQueue, null, 2), 'utf8');
+}
+```
 
 ## Agent Coordination
 
@@ -28,105 +82,149 @@ Use Task tool to launch agents in parallel:
 ```javascript
 const agents = [];
 
-// Always active agents
-agents.push(Task({
-  subagent_type: "Explore",
-  prompt: `You are security-expert. Review ${SCOPE} for security issues.
+const baseReviewPrompt = (passId, role, focus) => `Role: ${role}.
 
+Scope: ${SCOPE}
 Framework: ${FRAMEWORK}
-Patterns: ${frameworkPatterns?.security}
 
 Focus on:
-- SQL injection, XSS, CSRF vulnerabilities
-- Authentication and authorization flaws
-- Secrets exposure, insecure configurations
-- Input validation, output encoding
+${focus.map(item => `- ${item}`).join('\n')}
 
-Provide findings in evidence-based format with file:line.`
+Write findings to ${reviewQueuePath} (append JSONL if possible). If you cannot write files, return JSON only.
+
+Return JSON ONLY in this format:
+{
+  "pass": "${passId}",
+  "findings": [
+    {
+      "file": "path/to/file.ts",
+      "line": 42,
+      "severity": "critical|high|medium|low",
+      "category": "${passId}",
+      "description": "Issue description",
+      "suggestion": "How to fix",
+      "confidence": "high|medium|low",
+      "falsePositive": false
+    }
+  ]
+}`;
+
+// Always active agents
+agents.push(Task({
+  subagent_type: "review",
+  prompt: baseReviewPrompt('code-quality', 'code quality reviewer', [
+    'Code style and consistency',
+    'Best practices violations',
+    'Potential bugs and logic errors',
+    'Error handling and failure paths',
+    'Maintainability issues',
+    'Code duplication'
+  ])
 }));
 
 agents.push(Task({
-  subagent_type: "Explore",
-  prompt: `You are performance-engineer. Review ${SCOPE} for performance issues.
+  subagent_type: "review",
+  prompt: baseReviewPrompt('security', 'security reviewer', [
+    'Auth/authz flaws',
+    'Input validation and output encoding',
+    'Injection risks (SQL/command/template)',
+    'Secrets exposure and unsafe configs',
+    'Insecure defaults'
+  ])
+}));
 
-Framework: ${FRAMEWORK}
-Patterns: ${frameworkPatterns?.performance}
+agents.push(Task({
+  subagent_type: "review",
+  prompt: baseReviewPrompt('performance', 'performance reviewer', [
+    'N+1 queries and inefficient loops',
+    'Blocking operations in async paths',
+    'Hot path inefficiencies',
+    'Memory leaks or unnecessary allocations'
+  ])
+}));
 
-Focus on:
-- N+1 queries, inefficient algorithms
-- Memory leaks, unnecessary allocations
-- Blocking operations, missing async
-- Bundle size, lazy loading
-
-Provide findings in evidence-based format.`
+agents.push(Task({
+  subagent_type: "review",
+  prompt: baseReviewPrompt('test-coverage', 'test coverage reviewer', [
+    'New code without corresponding tests',
+    'Missing edge case coverage',
+    'Test quality (meaningful assertions)',
+    'Integration test needs',
+    'Mock/stub appropriateness',
+    HAS_TESTS ? 'Existing tests: verify coverage depth' : 'No tests detected: report missing tests'
+  ])
 }));
 
 // Conditional agents
-if (HAS_TESTS) {
-  agents.push(Task({
-    subagent_type: "Explore",
-    prompt: `You are test-quality-guardian. Review test files.
-
-Framework: ${FRAMEWORK}
-
-Focus on:
-- Test coverage for new code
-- Edge case coverage
-- Test design and maintainability
-- Mocking appropriateness
-
-Provide findings in evidence-based format.`
-  }));
-}
-
 if (FILE_COUNT > 50) {
   agents.push(Task({
-    subagent_type: "Explore",
-    prompt: `You are architecture-reviewer. Review ${SCOPE} for design issues.
-
-Framework: ${FRAMEWORK}
-
-Focus on:
-- Code organization and modularity
-- Design pattern violations
-- Dependency management
-- SOLID principles
-
-Provide findings in evidence-based format.`
+    subagent_type: "review",
+    prompt: baseReviewPrompt('architecture', 'architecture reviewer', [
+      'Module boundaries and ownership',
+      'Dependency direction and layering',
+      'Cross-layer coupling',
+      'Consistency of patterns'
+    ])
   }));
 }
 
 if (HAS_DB) {
   agents.push(Task({
-    subagent_type: "Explore",
-    prompt: `You are database-specialist. Review ${SCOPE} for database issues.
-
-Framework: ${FRAMEWORK}
-
-Focus on:
-- Query optimization, N+1 queries
-- Missing indexes
-- Transaction handling
-- Connection pooling
-
-Provide findings in evidence-based format.`
+    subagent_type: "review",
+    prompt: baseReviewPrompt('database', 'database specialist', [
+      'Query optimization and N+1 queries',
+      'Missing indexes',
+      'Transaction handling',
+      'Migration safety'
+    ])
   }));
 }
 
 if (HAS_API) {
   agents.push(Task({
-    subagent_type: "Explore",
-    prompt: `You are api-designer. Review ${SCOPE} for API issues.
+    subagent_type: "review",
+    prompt: baseReviewPrompt('api', 'api designer', [
+      'REST best practices',
+      'Error handling and status codes',
+      'Rate limiting and pagination',
+      'API versioning'
+    ])
+  }));
+}
 
-Framework: ${FRAMEWORK}
+if (HAS_FRONTEND) {
+  agents.push(Task({
+    subagent_type: "review",
+    prompt: baseReviewPrompt('frontend', 'frontend specialist', [
+      'Component boundaries',
+      'State management patterns',
+      'Accessibility',
+      'Render performance'
+    ])
+  }));
+}
 
-Focus on:
-- REST best practices
-- Error handling and status codes
-- Rate limiting, pagination
-- API versioning
+if (HAS_BACKEND) {
+  agents.push(Task({
+    subagent_type: "review",
+    prompt: baseReviewPrompt('backend', 'backend specialist', [
+      'Service boundaries',
+      'Domain logic correctness',
+      'Concurrency and idempotency',
+      'Background job safety'
+    ])
+  }));
+}
 
-Provide findings in evidence-based format.`
+if (HAS_CICD) {
+  agents.push(Task({
+    subagent_type: "review",
+    prompt: baseReviewPrompt('devops', 'devops reviewer', [
+      'CI/CD safety',
+      'Secrets handling',
+      'Build/test pipelines',
+      'Deploy config correctness'
+    ])
   }));
 }
 ```
@@ -140,15 +238,22 @@ function consolidateFindings(agentResults) {
   const allFindings = [];
 
   for (const result of agentResults) {
-    if (result.findings) {
-      allFindings.push(...result.findings);
+    const pass = result.pass || 'unknown';
+    const findings = Array.isArray(result.findings) ? result.findings : [];
+    for (const finding of findings) {
+      allFindings.push({
+        id: `${pass}:${finding.file}:${finding.line}:${finding.description}`,
+        pass,
+        ...finding,
+        status: finding.falsePositive ? 'false-positive' : 'open'
+      });
     }
   }
 
-  // Deduplicate by file:line
+  // Deduplicate by pass:file:line:description
   const seen = new Set();
   const deduped = allFindings.filter(f => {
-    const key = `${f.file}:${f.line}`;
+    const key = `${f.pass}:${f.file}:${f.line}:${f.description}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -157,6 +262,13 @@ function consolidateFindings(agentResults) {
   // Sort by severity
   const severityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
   deduped.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+
+  // Update queue file
+  const queueState = JSON.parse(fs.readFileSync(reviewQueuePath, 'utf8'));
+  queueState.items = deduped;
+  queueState.passes = Array.from(new Set(deduped.map(item => item.pass)));
+  queueState.updatedAt = new Date().toISOString();
+  fs.writeFileSync(reviewQueuePath, JSON.stringify(queueState, null, 2), 'utf8');
 
   // Group by file
   const byFile = {};
@@ -169,12 +281,24 @@ function consolidateFindings(agentResults) {
     all: deduped,
     byFile,
     counts: {
-      critical: deduped.filter(f => f.severity === 'critical').length,
-      high: deduped.filter(f => f.severity === 'high').length,
-      medium: deduped.filter(f => f.severity === 'medium').length,
-      low: deduped.filter(f => f.severity === 'low').length
+      critical: deduped.filter(f => f.severity === 'critical' && !f.falsePositive).length,
+      high: deduped.filter(f => f.severity === 'high' && !f.falsePositive).length,
+      medium: deduped.filter(f => f.severity === 'medium' && !f.falsePositive).length,
+      low: deduped.filter(f => f.severity === 'low' && !f.falsePositive).length
     }
   };
+}
+```
+
+## Queue Cleanup
+
+After fixes and re-review, remove the queue file if no open issues remain:
+
+```javascript
+const queueState = JSON.parse(fs.readFileSync(reviewQueuePath, 'utf8'));
+const openCount = queueState.items.filter(item => !item.falsePositive).length;
+if (openCount === 0) {
+  fs.unlinkSync(reviewQueuePath);
 }
 ```
 

@@ -25,7 +25,7 @@ The main orchestrator **MUST spawn these agents in order**:
 | 7 | `implementation-agent` | opus | Read, Write, Edit, Bash | Execute plan |
 | 8 | `deslop-work` | sonnet | Read, Grep, Edit, Bash(git:*) | Clean AI slop (uses pipeline.js) |
 | 8 | `test-coverage-checker` | sonnet | Bash(npm:*), Read, Grep | Validate test coverage |
-| 9 | `review-orchestrator` | opus | Task(*-reviewer) | Multi-agent review loop |
+| 9 | `review-orchestrator` | opus | Task(review) | Multi-pass review loop |
 | 10 | `delivery-validator` | sonnet | Bash(npm:*), Read | Validate completion |
 | 11 | `docs-updater` | sonnet | Read, Edit, Task(simple-fixer) | Update documentation |
 | 12 | `/ship` command | - | - | PR creation and merge |
@@ -37,6 +37,12 @@ The main orchestrator **MUST spawn these agents in order**:
 - **`review-orchestrator`** - Required for code review before shipping
 - **`delivery-validator`** - Required before calling /ship
 
+### Review Decision Gate
+
+If review-orchestrator reports `blocked: true` (iteration limit or stall), /next-task must decide:
+- Re-run review-orchestrator with `--resume`, or
+- Override and continue if issues are non-blocking (clear the queue file).
+
 ---
 
 ## /ship - PR Workflow
@@ -45,7 +51,7 @@ The main orchestrator **MUST spawn these agents in order**:
 |-------|----------------|----------------|
 | 1-3 | Pre-flight, commit, create PR | Bash(git:*), Bash(gh:*) |
 | 4 | **CI & Review Monitor Loop** | Bash(gh:*), Task(ci-fixer) |
-| 5 | Internal review (standalone only) | Task(*-reviewer) |
+| 5 | Internal review (standalone only) | Task(review) |
 | 6 | Merge PR | Bash(gh:*) |
 | 7-10 | Deploy & validate | Bash(deployment:*) |
 

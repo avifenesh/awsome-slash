@@ -323,12 +323,12 @@ MEDIUM (1):
 
 Would you like me to fix these?
 
-You: Yes, fix critical and high priority
+You: Yes, fix all review issues
 
 Claude:
 Round 1: ✓ Fixed security issue
 Round 2: ✓ Fixed React performance + added tests
-Round 3: ✓ Re-verified - no critical issues remain
+Round 3: ✓ Re-verified - no open issues remain
 
 Code is ready to ship!
 ```
@@ -361,9 +361,9 @@ URL: https://github.com/youruser/repo/pull/156
 Phase 4: Waiting for CI...
 ✓ All checks passed
 
-Phase 5: Review agents...
-✓ code-reviewer: approved
-✓ test-analyzer: approved (95% coverage)
+Phase 5: Review passes...
+✓ code quality: approved
+✓ test coverage: approved (95% coverage)
 
 Phase 6: Merging
 ✓ Merged PR #156 to main

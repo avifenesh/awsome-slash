@@ -2,7 +2,7 @@
 
 Complete reference for all agents in awesome-slash.
 
-**TL;DR:** 29 agents across 4 plugins, plus 3 external agents from pr-review-toolkit. opus for reasoning, sonnet for patterns, haiku for execution. Each agent does one thing well. <!-- AGENT_COUNT_TOTAL: 29 -->
+**TL;DR:** 31 agents across 4 plugins. opus for reasoning, sonnet for patterns, haiku for execution. Each agent does one thing well. <!-- AGENT_COUNT_TOTAL: 31 -->
 
 ---
 
@@ -11,10 +11,9 @@ Complete reference for all agents in awesome-slash.
 | Plugin | Agents | Jump to |
 |--------|--------|---------|
 | next-task | 13 | [task-discoverer](#task-discoverer), [worktree-manager](#worktree-manager), [exploration-agent](#exploration-agent), [planning-agent](#planning-agent), [implementation-agent](#implementation-agent), [deslop-work](#deslop-work), [test-coverage-checker](#test-coverage-checker), [review-orchestrator](#review-orchestrator), [delivery-validator](#delivery-validator), [docs-updater](#docs-updater), [simple-fixer](#simple-fixer), [ci-monitor](#ci-monitor), [ci-fixer](#ci-fixer) |
-| audit-project | 8 | [security-expert](#security-expert), [performance-engineer](#performance-engineer), [test-quality-guardian](#test-quality-guardian), [architecture-reviewer](#architecture-reviewer), [database-specialist](#database-specialist), [api-designer](#api-designer), [frontend-specialist](#frontend-specialist), [devops-reviewer](#devops-reviewer) |
+| audit-project | 10 | [code-quality-reviewer](#code-quality-reviewer), [security-expert](#security-expert), [performance-engineer](#performance-engineer), [test-quality-guardian](#test-quality-guardian), [architecture-reviewer](#architecture-reviewer), [database-specialist](#database-specialist), [api-designer](#api-designer), [frontend-specialist](#frontend-specialist), [backend-specialist](#backend-specialist), [devops-reviewer](#devops-reviewer) |
 | enhance | 7 | [enhancement-orchestrator](#enhancement-orchestrator), [plugin-enhancer](#plugin-enhancer), [agent-enhancer](#agent-enhancer), [claudemd-enhancer](#claudemd-enhancer), [docs-enhancer](#docs-enhancer), [prompt-enhancer](#prompt-enhancer), [enhancement-reporter](#enhancement-reporter) |
 | drift-detect | 1 | [plan-synthesizer](#plan-synthesizer) |
-| External (pr-review-toolkit) | 3 | [code-reviewer](#external-agents), [silent-failure-hunter](#external-agents), [pr-test-analyzer](#external-agents) |
 
 **Design principle:** Each agent has a single responsibility. Complex work is decomposed into specialized agents that do one thing extremely well, then orchestrated together.
 
@@ -26,7 +25,7 @@ Complete reference for all agents in awesome-slash.
 
 ## Overview
 
-awesome-slash uses 29 specialized agents across 4 plugins, plus 3 external agents from pr-review-toolkit. Each agent is optimized for a specific task and assigned a model based on complexity:
+awesome-slash uses 31 specialized agents across 4 plugins. Each agent is optimized for a specific task and assigned a model based on complexity:
 
 | Model | Use Case | Cost |
 |-------|----------|------|
@@ -36,8 +35,7 @@ awesome-slash uses 29 specialized agents across 4 plugins, plus 3 external agent
 
 **Agent types:**
 - **File-based agents** (21) - Defined in `plugins/*/agents/*.md` with frontmatter <!-- AGENT_COUNT_FILE_BASED: 21 -->
-- **Role-based agents** (8) - Defined inline via Task tool with specialized prompts <!-- AGENT_COUNT_ROLE_BASED: 8 -->
-- **External agents** (3) - From pr-review-toolkit, invoked by review-orchestrator
+- **Role-based agents** (10) - Defined inline via Task tool with specialized prompts <!-- AGENT_COUNT_ROLE_BASED: 10 -->
 
 ---
 
@@ -207,19 +205,23 @@ awesome-slash uses 29 specialized agents across 4 plugins, plus 3 external agent
 **Purpose:** Coordinate multi-agent review until clean.
 
 **What it does:**
-1. Launches review agents in parallel:
-   - code-reviewer
-   - silent-failure-hunter
-   - pr-test-analyzer
-2. Aggregates findings by severity
-3. Auto-fixes critical/high issues
-4. Runs deslop-work after each iteration
-5. Loops until no critical/high issues
+1. Launches core review passes in parallel:
+   - Code quality (includes error handling)
+   - Security
+   - Performance
+   - Test coverage
+2. Adds conditional specialists (DB, architecture, API, frontend, backend, devops)
+3. Aggregates findings by severity
+4. Writes a review queue file in the platform state dir
+5. Fixes all non-false-positive issues
+6. Runs deslop-work after each iteration
+7. Loops until no open issues remain
+8. Stops early on iteration limit or stall and returns control for decision
 
 **Tools available:**
 - Task (for sub-agents)
 - Bash (git)
-- Read, Edit
+- Read, Write, Edit
 
 **Restrictions:**
 - MUST NOT create PR
@@ -236,7 +238,7 @@ awesome-slash uses 29 specialized agents across 4 plugins, plus 3 external agent
 **Purpose:** Final validation before shipping.
 
 **Checks:**
-1. Review status - all critical/high resolved
+1. Review status - no open issues (or explicit override)
 2. Tests pass
 3. Build passes
 4. Task requirements met (extracts from task, maps to changes)
@@ -491,7 +493,21 @@ awesome-slash uses 29 specialized agents across 4 plugins, plus 3 external agent
 
 ## audit-project Plugin Agents
 
-These are role-based agents invoked via Task tool with specialized prompts. They use the built-in Explore subagent type with domain-specific instructions.
+These are role-based agents invoked via Task tool with specialized prompts. They use the built-in review subagent type with domain-specific instructions.
+
+### code-quality-reviewer
+
+**Activation:** Always active
+**Purpose:** Review code quality and error handling.
+
+**Focuses on:**
+- Code style and consistency
+- Best practices violations
+- Error handling and failure paths
+- Maintainability issues
+- Code duplication
+
+---
 
 ### security-expert
 
@@ -521,8 +537,8 @@ These are role-based agents invoked via Task tool with specialized prompts. They
 
 ### test-quality-guardian
 
-**Activation:** Conditional (if tests exist)
-**Purpose:** Validate test quality.
+**Activation:** Always active (reports missing tests)
+**Purpose:** Validate test coverage and quality.
 
 **Focuses on:**
 - Test coverage for new code
@@ -573,7 +589,7 @@ These are role-based agents invoked via Task tool with specialized prompts. They
 
 ### frontend-specialist
 
-**Activation:** Conditional (if React/Vue/Angular)
+**Activation:** Conditional (if frontend detected)
 **Purpose:** Review frontend code.
 
 **Focuses on:**
@@ -581,6 +597,19 @@ These are role-based agents invoked via Task tool with specialized prompts. They
 - State management patterns
 - Performance (memoization, virtualization)
 - Accessibility
+
+---
+
+### backend-specialist
+
+**Activation:** Conditional (if backend detected)
+**Purpose:** Review backend service and domain logic.
+
+**Focuses on:**
+- Service boundaries and layering
+- Domain logic correctness
+- Concurrency and idempotency
+- Background job safety
 
 ---
 
@@ -594,39 +623,6 @@ These are role-based agents invoked via Task tool with specialized prompts. They
 - Secret management
 - Docker best practices
 - Deployment strategies
-
----
-
-## External Agents
-
-These agents are from **pr-review-toolkit**, a separate plugin. They're invoked by review-orchestrator during the review loop.
-
-### code-reviewer
-
-**Source:** pr-review-toolkit
-**Purpose:** General code quality review.
-
-Reviews code for adherence to project guidelines, style guides, and best practices. Checks for style violations, potential issues, and ensures code follows established patterns.
-
----
-
-### silent-failure-hunter
-
-**Source:** pr-review-toolkit
-**Purpose:** Find hidden error handling issues.
-
-Identifies silent failures, inadequate error handling, and inappropriate fallback behavior. Catches empty catch blocks, swallowed promises, and error suppression patterns.
-
----
-
-### pr-test-analyzer
-
-**Source:** pr-review-toolkit
-**Purpose:** Analyze test coverage quality.
-
-Reviews pull requests for test coverage quality and completeness. Ensures tests adequately cover new functionality and edge cases.
-
-**Why external:** These are specialized review agents maintained separately. Using them avoids duplicating well-tested review logic.
 
 ---
 

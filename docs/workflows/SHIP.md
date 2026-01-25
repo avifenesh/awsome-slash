@@ -186,12 +186,13 @@ mutation($threadId: ID!) {
 
 **Skipped when called from `/next-task`** (review already completed by review-orchestrator).
 
-When standalone, launches three agents in parallel:
-- `code-reviewer` - Code quality
-- `silent-failure-hunter` - Error handling
-- `pr-test-analyzer` - Test coverage
+When standalone, launches core review passes in parallel:
+- Code quality (includes error handling)
+- Security
+- Performance
+- Test coverage
 
-Iterates until no critical/high issues.
+Iterates until no non-false-positive issues remain (max 3 iterations).
 
 ---
 

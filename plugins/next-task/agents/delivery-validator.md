@@ -52,27 +52,36 @@ const reviewResults = state.reviewResult;
 
 ### Check 1: Review Status
 
-Verify all critical and high-severity issues from review are resolved:
+Verify review is approved or explicitly overridden:
 
 ```javascript
 function checkReviewStatus(reviewResults) {
   if (!reviewResults) return { passed: false, reason: 'No review results found' };
 
-  if (reviewResults.remainingIssues?.critical > 0) {
-    return {
-      passed: false,
-      reason: `${reviewResults.remainingIssues.critical} critical issues remain unresolved`
-    };
+  if (reviewResults.approved) {
+    return { passed: true };
   }
 
-  if (reviewResults.remainingIssues?.high > 0) {
-    return {
-      passed: false,
-      reason: `${reviewResults.remainingIssues.high} high-priority issues remain unresolved`
-    };
+  if (reviewResults.override) {
+    return { passed: true, override: true, reason: reviewResults.overrideReason };
   }
 
-  return { passed: true };
+  if (reviewResults.blocked) {
+    return { passed: false, reason: `Review blocked (${reviewResults.reason || 'unknown'})` };
+  }
+
+  const remaining = reviewResults.remaining || reviewResults.remainingIssues;
+  if (remaining) {
+    const total = (remaining.critical || 0)
+      + (remaining.high || 0)
+      + (remaining.medium || 0)
+      + (remaining.low || 0);
+    if (total > 0) {
+      return { passed: false, reason: `${total} review issues remain unresolved` };
+    }
+  }
+
+  return { passed: false, reason: 'Review not approved' };
 }
 ```
 
@@ -387,7 +396,7 @@ This agent is called:
 ✓ implementation-agent completed
 ✓ deslop-work ran on new code
 ✓ test-coverage-checker ran (advisory)
-✓ review-orchestrator APPROVED (all critical/high resolved)
+✓ review-orchestrator APPROVED (no open issues or override)
 ```
 
 ### What This Agent MUST NOT Do

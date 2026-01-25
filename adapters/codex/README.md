@@ -68,13 +68,14 @@ codex
 > /audit-project
 > /audit-project --recent
 > /audit-project --domain security
+> /audit-project --resume
 ```
 
 **What it does:**
-- Deploys 8 specialized agents
+- Deploys 10 specialized agents
 - Adapts to your tech stack
 - Finds bugs, security issues, performance problems
-- Iterates until zero critical issues
+- Iterates until no open issues remain
 
 ---
 

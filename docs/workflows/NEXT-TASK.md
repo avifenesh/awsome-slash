@@ -186,14 +186,18 @@ Both agents run in parallel:
 **Human interaction: No**
 
 The agent:
-1. Launches three review agents in parallel:
-   - code-reviewer
-   - silent-failure-hunter
-   - pr-test-analyzer
-2. Aggregates findings by severity (critical/high/medium/low)
-3. Auto-fixes critical and high issues
-4. **Runs deslop-work after EACH iteration** (catches AI slop from fixes)
-5. Repeats until all critical/high resolved
+1. Launches core review passes in parallel:
+   - Code quality (includes error handling)
+   - Security
+   - Performance
+   - Test coverage
+2. Adds conditional specialists (DB, architecture, API, frontend, backend, devops)
+3. Aggregates findings by severity (critical/high/medium/low)
+4. Fixes all non-false-positive issues
+5. Writes a review queue file in the platform state dir
+6. **Runs deslop-work after EACH iteration** (catches AI slop from fixes)
+7. Repeats until no open issues remain
+8. Stops early if iteration limit or stall detected; control returns to /next-task for decision
 
 **No iteration limit.** The loop continues until clean.
 
@@ -210,7 +214,7 @@ The agent:
 **Human interaction: No**
 
 Five checks run:
-1. Review status - all critical/high resolved
+1. Review status - no open issues remaining (or explicit override)
 2. Tests pass
 3. Build passes
 4. Task requirements met (extracts from task description, maps to changes)
@@ -405,7 +409,7 @@ User: /next-task
 → Round 1: Found 3 issues (1 high, 2 medium)
 → Fixing high issue... ✓
 → deslop-work: Clean ✓
-→ Round 2: Found 0 critical/high issues ✓
+→ Round 2: Found 0 open issues ✓
 
 [Delivery Validation]
 → Tests pass ✓

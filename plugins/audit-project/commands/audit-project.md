@@ -1,6 +1,7 @@
 ---
 description: Multi-agent code review with iterative improvement
-argument-hint: "[scope] [--recent] [--domain AGENT] [--quick] [--create-tech-debt]"
+argument-hint: "[scope] [--recent] [--domain AGENT] [--quick] [--create-tech-debt] [--resume]"
+allowed-tools: Bash(git:*), Bash(node:*), Read, Write, Edit, Glob, Grep, Task, AskUserQuestion
 ---
 
 # /audit-project - Multi-Agent Code Review
@@ -25,6 +26,12 @@ Parse from $ARGUMENTS:
 - **--domain AGENT**: Review with specific agent only (e.g., `--domain security`)
 - **--quick**: Single pass, no iteration (fast feedback)
 - **--create-tech-debt**: Force create/update TECHNICAL_DEBT.md
+- **--resume**: Resume from existing review queue file
+
+### Resume Mode
+
+If `--resume` is provided, reuse the most recent review queue in the platform state dir.
+Otherwise create a new queue file. See `audit-project-agents.md` for queue handling.
 
 ## Phase 1: Context Gathering
 
@@ -46,6 +53,8 @@ elif [ "$PROJECT_TYPE" = "python" ]; then
   grep -q "django" requirements.txt 2>/dev/null && FRAMEWORK="django"
   grep -q "fastapi" requirements.txt 2>/dev/null && FRAMEWORK="fastapi"
 fi
+
+RESUME_MODE=$([ "${ARGUMENTS}" != "${ARGUMENTS%--resume*}" ] && echo "true" || echo "false")
 ```
 
 ### Project Analysis
@@ -56,26 +65,32 @@ TEST_FILES=$(git ls-files | grep -E '(test|spec)\.' | wc -l)
 HAS_TESTS=$( [ "$TEST_FILES" -gt 0 ] && echo "true" || echo "false" )
 HAS_DB=$(grep -rq -E "(Sequelize|Prisma|TypeORM)" . 2>/dev/null && echo "true" || echo "false")
 HAS_API=$(grep -rq -E "(express|fastify|@nestjs)" . 2>/dev/null && echo "true" || echo "false")
+HAS_FRONTEND=$( [ "$(git ls-files | grep -E '\.(tsx|jsx|vue|svelte)$' | wc -l)" -gt 0 ] && echo "true" || echo "false" )
+HAS_BACKEND=$(grep -rq -E "(express|fastify|@nestjs|koa|hapi)" . 2>/dev/null && echo "true" || echo "false")
 HAS_CICD=$([ -d ".github/workflows" ] && echo "true" || echo "false")
 ```
 
 ### Agent Selection
 
 **Always Active:**
+- `code-quality-reviewer`: Code quality, error handling, maintainability
 - `security-expert`: Security vulnerabilities, auth, input validation
 - `performance-engineer`: Performance bottlenecks, algorithms, memory
+- `test-quality-guardian`: Test coverage and quality (reports missing tests)
 
 **Conditional:**
-- `test-quality-guardian`: Test coverage and quality (if `HAS_TESTS=true`)
 - `architecture-reviewer`: Design patterns (if `FILE_COUNT > 50`)
 - `database-specialist`: Query optimization (if `HAS_DB=true`)
 - `api-designer`: REST best practices (if `HAS_API=true`)
-- `frontend-specialist`: Component design (if React/Vue/Angular)
+- `frontend-specialist`: Component design (if `HAS_FRONTEND=true`)
+- `backend-specialist`: Service and domain logic (if `HAS_BACKEND=true`)
 - `devops-reviewer`: CI/CD config (if `HAS_CICD=true`)
 
 ## Phase 2: Multi-Agent Review
 
 See `audit-project-agents.md` for detailed agent coordination.
+
+**Review queue:** Write findings to a temporary queue file in the platform state dir and keep it updated until all issues are resolved. Remove the file when the queue is empty.
 
 ### Finding Format (Required)
 
@@ -129,14 +144,15 @@ Last updated: $(date -I)
 
 1. **Auto-fixable** (lint, formatting): Apply directly
 2. **Manual fix** (code logic): Implement suggested fix
-3. **Design decision required**: Document in tech debt
-4. **False positive**: Remove from list
+3. **Design decision required**: Flag as blocked and report to user
+4. **False positive**: Mark and remove from review queue
 
 ### Fix Order
 
 1. Critical severity first
-2. Then by effort (small → large)
-3. Then batch by file
+2. Then high → medium → low
+3. Then by effort (small → large)
+4. Then batch by file
 
 ## Phase 5: Verification
 
@@ -168,10 +184,12 @@ If verification fails:
 ## Phase 6: Iteration
 
 ```javascript
-const MAX_ITERATIONS = 5;
+const initialReview = /* results from Phase 2 review */;
+const initialIssues = Array.isArray(initialReview?.issues) ? initialReview.issues : [];
 let iteration = 1;
+let remainingIssues = initialIssues;
 
-while (iteration <= MAX_ITERATIONS) {
+while (remainingIssues.length > 0) {
   const fixResult = applyFixes(remainingIssues);
 
   const verifyResult = runVerification();
@@ -194,6 +212,42 @@ while (iteration <= MAX_ITERATIONS) {
 ### Quick Mode
 
 If `--quick` flag: Single pass, findings only, no fixes.
+
+## Phase 6.5: Decision Gate (User)
+
+After each iteration (or after re-review if issues remain), report the queue state and ask the user what to do next.
+
+```javascript
+const openCount = remainingIssues.length;
+console.log(`Open issues: ${openCount}`);
+console.log(`Queue file: ${reviewQueuePath}`); // set in Phase 2 (audit-project-agents)
+
+const decision = await AskUserQuestion({
+  questions: [{
+    header: "Audit Decision",
+    question: "Review queue still open. What next?",
+    options: [
+      { label: "Continue review", description: "Run another iteration" },
+      { label: "Create issues", description: "Stop and create issues" },
+      { label: "Update tech debt", description: "Stop and update TECHNICAL_DEBT.md" },
+      { label: "Leave queue", description: "Stop and keep queue for resume" }
+    ],
+    multiSelect: false
+  }]
+});
+
+const choice = decision[0];
+if (choice === 'Continue review') {
+  // continue loop
+} else if (choice === 'Create issues') {
+  // Create issues and remove queue file
+} else if (choice === 'Update tech debt') {
+  // Update TECHNICAL_DEBT.md and remove queue file
+} else if (choice === 'Leave queue') {
+  // Leave queue file for --resume
+  break;
+}
+```
 
 ## Phase 7: Completion Report
 
