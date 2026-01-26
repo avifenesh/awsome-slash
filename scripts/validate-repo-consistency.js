@@ -14,7 +14,7 @@ function escapeRegExp(value) {
 }
 
 function decodeString(value) {
-  return value.replace(/\\\\/g, '\\').replace(/\\'/g, "'");
+  return value.replace(/\\'/g, "'");
 }
 
 function isPathWithin(baseDir, targetPath) {
