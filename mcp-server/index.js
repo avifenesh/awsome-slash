@@ -295,7 +295,7 @@ const TOOLS = [
         },
         cwd: {
           type: 'string',
-          description: 'Repository root (default: current directory)'
+          description: 'Repo-relative root (default: repo root)'
         }
       },
       required: []
@@ -963,7 +963,14 @@ const toolHandlers = {
 
   async repo_map({ action, includeDocs, docsDepth, full, force, cwd }) {
     try {
-      const basePath = cwd || process.cwd();
+      const requestedPath = cwd || REPO_ROOT;
+      const resolvedBasePath = resolveRepoPath(requestedPath);
+      if (!resolvedBasePath) {
+        return crossPlatform.errorResponse(
+          `Invalid path outside repository: ${cwd}`
+        );
+      }
+      const basePath = resolvedBasePath;
       const act = (action || 'status').toLowerCase();
 
       let result;

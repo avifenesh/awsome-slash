@@ -25,9 +25,16 @@ jest.mock('fs', () => ({
   rmSync: jest.fn()
 }));
 
+jest.mock('../lib/repo-map', () => ({
+  init: jest.fn(),
+  update: jest.fn(),
+  status: jest.fn()
+}));
+
 // Import after mocks are set up
 const { exec: mockExec } = require('child_process');
 const fs = require('fs');
+const repoMap = require('../lib/repo-map');
 
 // Import the actual tool handlers from the MCP server
 // Tests MUST fail if module cannot be imported - no fallback to ensure we test actual code
@@ -290,20 +297,6 @@ function test() {
   });
 });
 
-describe('MCP Server - repo_map', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
-  test('should return exists false when no repo-map present', async () => {
-    const result = await toolHandlers.repo_map({ action: 'status' });
-    const parsed = JSON.parse(result.content[0].text);
-
-    expect(parsed.exists).toBe(false);
-    expect(parsed.message).toContain('No repo-map found');
-  });
-});
-
 describe('MCP Server - Error Handling', () => {
   test('should handle task_discover errors gracefully', async () => {
     const toolHandlers = {
@@ -331,5 +324,47 @@ describe('MCP Server - Error Handling', () => {
     } catch (error) {
       expect(error.message).toBe('Review failed');
     }
+  });
+});
+
+describe('MCP Server - repo_map', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test('should return status message when repo-map is missing', async () => {
+    repoMap.status.mockReturnValue({ exists: false });
+
+    const result = await toolHandlers.repo_map({ action: 'status' });
+    const parsed = JSON.parse(result.content[0].text);
+
+    expect(parsed.exists).toBe(false);
+    expect(parsed.message).toContain('No repo-map found');
+  });
+
+  test('should reject repo_map cwd outside repository', async () => {
+    const outsidePath = require('path').resolve(process.cwd(), '..');
+
+    const result = await toolHandlers.repo_map({ action: 'status', cwd: outsidePath });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('Invalid path outside repository');
+  });
+
+  test('should run init action and return result', async () => {
+    repoMap.init.mockResolvedValue({ success: true, map: { stats: { totalSymbols: 1 }, files: {} } });
+
+    const result = await toolHandlers.repo_map({ action: 'init' });
+    const parsed = JSON.parse(result.content[0].text);
+
+    expect(parsed.action).toBe('init');
+    expect(parsed.result.success).toBe(true);
+  });
+
+  test('should handle invalid repo_map action', async () => {
+    const result = await toolHandlers.repo_map({ action: 'unknown' });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('Invalid action');
   });
 });
