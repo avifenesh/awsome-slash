@@ -64,7 +64,7 @@ async function incrementalUpdate(basePath, map) {
   }
 
   const diff = getGitDiff(basePath, map.git.commit);
-  if (!diff) {
+  if (diff === null) {
     return updateWithoutGit(basePath, map, installed.command);
   }
 
@@ -352,7 +352,7 @@ function getGitDiff(basePath, sinceCommit) {
  */
 function commitExists(basePath, commit) {
   try {
-    execSync(`git cat-file -e ${commit}^{commit}`, {
+    execSync(`git cat-file -e ${commit}`, {
       cwd: basePath,
       stdio: ['pipe', 'pipe', 'pipe']
     });

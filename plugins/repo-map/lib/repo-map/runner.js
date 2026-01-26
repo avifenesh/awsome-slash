@@ -32,6 +32,9 @@ const EXCLUDE_DIRS = Array.from(new Set([
   '.claude', '.opencode', '.codex', '.venv', 'venv', 'env'
 ]));
 
+const AST_GREP_BATCH_SIZE = 100;
+const LANGUAGE_EXTENSION_SCAN_LIMIT = 500;
+
 /**
  * Detect languages in a repository
  * @param {string} basePath - Repository root
@@ -59,13 +62,11 @@ async function detectLanguages(basePath) {
     }
   }
   
-  // If no config files found, scan for file extensions
-  if (detected.size === 0) {
-    const extensions = scanForExtensions(basePath, 100); // Sample up to 100 files
-    for (const [lang, exts] of Object.entries(LANGUAGE_EXTENSIONS)) {
-      if (exts.some(ext => extensions.has(ext))) {
-        detected.add(lang);
-      }
+  // Supplement with extension scan to catch mixed-language repos
+  const extensions = scanForExtensions(basePath, LANGUAGE_EXTENSION_SCAN_LIMIT);
+  for (const [lang, exts] of Object.entries(LANGUAGE_EXTENSIONS)) {
+    if (exts.some(ext => extensions.has(ext))) {
+      detected.add(lang);
     }
   }
   
@@ -155,51 +156,155 @@ async function fullScan(basePath, languages, options = {}) {
   for (const lang of languages) {
     const langQueries = queries.getQueriesForLanguage(lang);
     if (!langQueries) continue;
-    
-    // Get files for this language
+
     const files = findFilesForLanguage(basePath, lang);
-    
+    if (files.length === 0) continue;
+
+    const fileEntries = [];
+    const symbolMapsByFile = new Map();
+    const importStateByFile = new Map();
+    const contentByFile = new Map();
+
     for (const file of files) {
       const relativePath = path.relative(basePath, file).replace(/\\/g, '/');
-      
+
       // Skip if already processed (e.g., .ts and .tsx both map to typescript)
       if (map.files[relativePath]) continue;
-      
+
       try {
         const content = fs.readFileSync(file, 'utf8');
         const hash = crypto.createHash('sha256').update(content).digest('hex').slice(0, 16);
-
-        // Extract symbols using ast-grep
-        const symbols = extractSymbols(cmd, file, lang, langQueries, basePath, content);
-        const imports = extractImports(cmd, file, lang, langQueries, basePath);
 
         map.files[relativePath] = {
           hash,
           language: lang,
           size: content.length,
-          symbols,
-          imports
+          symbols: {
+            exports: [],
+            functions: [],
+            classes: [],
+            types: [],
+            constants: []
+          },
+          imports: []
         };
 
-        // Build dependency graph
-        if (imports.length > 0) {
-          map.dependencies[relativePath] = Array.from(new Set(imports.map(imp => imp.source)));
-        }
-
         map.stats.totalFiles++;
-        map.stats.totalSymbols +=
-          (symbols.functions?.length || 0) +
-          (symbols.classes?.length || 0) +
-          (symbols.types?.length || 0) +
-          (symbols.constants?.length || 0);
-
+        fileEntries.push({ file, relativePath });
+        symbolMapsByFile.set(relativePath, createSymbolMaps());
+        importStateByFile.set(relativePath, { items: [], seen: new Set() });
+        contentByFile.set(relativePath, content);
       } catch (err) {
-        // Skip files that fail to process
         map.stats.errors.push({
           file: relativePath,
           error: err.message
         });
       }
+    }
+
+    if (fileEntries.length === 0) continue;
+
+    const filesBySgLang = new Map();
+    for (const entry of fileEntries) {
+      const sgLang = queries.getSgLanguageForFile(entry.file, lang);
+      if (!filesBySgLang.has(sgLang)) {
+        filesBySgLang.set(sgLang, []);
+      }
+      filesBySgLang.get(sgLang).push(entry);
+    }
+
+    for (const [sgLang, entries] of filesBySgLang) {
+      const filePaths = entries.map(entry => entry.file);
+      const chunks = chunkArray(filePaths, AST_GREP_BATCH_SIZE);
+
+      const patternGroups = [
+        { category: 'exports', patterns: langQueries.exports, defaultKind: 'export' },
+        { category: 'functions', patterns: langQueries.functions, defaultKind: 'function' },
+        { category: 'classes', patterns: langQueries.classes, defaultKind: 'class' },
+        { category: 'types', patterns: langQueries.types, defaultKind: 'type' },
+        { category: 'constants', patterns: langQueries.constants, defaultKind: 'constant' },
+        { category: 'imports', patterns: langQueries.imports, defaultKind: 'import' }
+      ];
+
+      for (const group of patternGroups) {
+        if (!group.patterns || group.patterns.length === 0) continue;
+
+        for (const patternDef of group.patterns) {
+          const pattern = typeof patternDef === 'string' ? patternDef : patternDef.pattern;
+          if (!pattern) continue;
+
+          for (const chunk of chunks) {
+            const matches = runAstGrepPattern(cmd, pattern, sgLang, basePath, chunk);
+            for (const match of matches) {
+              const matchedPath = normalizeMatchPath(match.file, basePath);
+              if (!matchedPath) continue;
+
+              const symbolMaps = symbolMapsByFile.get(matchedPath);
+              const importState = importStateByFile.get(matchedPath);
+              if (!symbolMaps || !importState) continue;
+
+              if (group.category === 'imports') {
+                const sourceResult = extractSourceFromMatch(match, patternDef);
+                const sources = Array.isArray(sourceResult) ? sourceResult : [sourceResult];
+                for (const source of sources) {
+                  if (!source) continue;
+                  const kind = patternDef.kind || 'import';
+                  const key = `${source}:${kind}`;
+                  if (importState.seen.has(key)) continue;
+                  importState.seen.add(key);
+                  importState.items.push({
+                    source,
+                    kind,
+                    line: getLine(match)
+                  });
+                }
+                continue;
+              }
+
+              const names = extractNamesFromMatch(match, patternDef);
+              const targetMap = symbolMaps[group.category];
+              if (!targetMap) continue;
+              for (const name of names) {
+                const kind = patternDef.kind || group.defaultKind;
+                addSymbolToMap(targetMap, name, match, kind, patternDef.extra);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    for (const entry of fileEntries) {
+      const relativePath = entry.relativePath;
+      const symbolMaps = symbolMapsByFile.get(relativePath);
+      const importState = importStateByFile.get(relativePath);
+      if (!symbolMaps || !importState) continue;
+
+      const exportNames = new Set(symbolMaps.exports.keys());
+      const content = contentByFile.get(relativePath) || '';
+      applyLanguageExportRules(lang, content, exportNames, symbolMaps.functions, symbolMaps.classes, symbolMaps.types, symbolMaps.constants);
+      ensureExportEntries(symbolMaps.exports, exportNames, symbolMaps.functions, symbolMaps.classes, symbolMaps.types, symbolMaps.constants);
+
+      const symbols = {
+        exports: mapToSortedArray(symbolMaps.exports),
+        functions: mapToSortedArray(symbolMaps.functions, exportNames),
+        classes: mapToSortedArray(symbolMaps.classes, exportNames),
+        types: mapToSortedArray(symbolMaps.types, exportNames),
+        constants: mapToSortedArray(symbolMaps.constants, exportNames)
+      };
+
+      map.files[relativePath].symbols = symbols;
+      map.files[relativePath].imports = importState.items;
+
+      if (importState.items.length > 0) {
+        map.dependencies[relativePath] = Array.from(new Set(importState.items.map(imp => imp.source)));
+      }
+
+      map.stats.totalSymbols +=
+        (symbols.functions?.length || 0) +
+        (symbols.classes?.length || 0) +
+        (symbols.types?.length || 0) +
+        (symbols.constants?.length || 0);
     }
   }
 
@@ -255,6 +360,75 @@ function findFilesForLanguage(basePath, language) {
   
   scan(basePath);
   return files;
+}
+
+function createSymbolMaps() {
+  return {
+    exports: new Map(),
+    functions: new Map(),
+    classes: new Map(),
+    types: new Map(),
+    constants: new Map()
+  };
+}
+
+function chunkArray(items, size) {
+  if (!items || items.length === 0) return [];
+  const chunks = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
+function normalizeMatchPath(matchFile, basePath) {
+  if (!matchFile) return null;
+  const absolutePath = path.isAbsolute(matchFile) ? matchFile : path.join(basePath, matchFile);
+  return path.relative(basePath, absolutePath).replace(/\\/g, '/');
+}
+
+function addSymbolToMap(map, name, match, kind, extra = {}) {
+  if (!name) return;
+  if (!map.has(name)) {
+    map.set(name, {
+      name,
+      line: getLine(match),
+      kind,
+      ...extra
+    });
+  }
+}
+
+function runAstGrepPattern(cmd, pattern, lang, basePath, filePaths) {
+  if (!pattern || !filePaths || filePaths.length === 0) return [];
+
+  try {
+    const result = spawnSync(cmd, [
+      'run',
+      '--pattern', pattern,
+      '--lang', lang,
+      '--json=stream',
+      ...filePaths
+    ], {
+      cwd: basePath,
+      encoding: 'utf8',
+      timeout: 300000,
+      windowsHide: true,
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+
+    if (result.error) {
+      return [];
+    }
+
+    if (typeof result.status === 'number' && result.status > 1) {
+      return [];
+    }
+
+    return parseNdjson(result.stdout);
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -417,21 +591,23 @@ function runAstGrep(cmd, file, pattern, lang, basePath) {
       return [];
     }
     
-    // Parse NDJSON (newline-delimited JSON)
-    const matches = [];
-    const lines = (result.stdout || '').split('\n').filter(Boolean);
-    for (const line of lines) {
-      try {
-        matches.push(JSON.parse(line));
-      } catch {
-        // Skip malformed lines
-      }
-    }
-    
-    return matches;
+    return parseNdjson(result.stdout);
   } catch {
     return [];
   }
+}
+
+function parseNdjson(output) {
+  const matches = [];
+  const lines = (output || '').split('\n').filter(Boolean);
+  for (const line of lines) {
+    try {
+      matches.push(JSON.parse(line));
+    } catch {
+      // Skip malformed lines
+    }
+  }
+  return matches;
 }
 
 /**
@@ -457,6 +633,15 @@ function extractNamesFromMatch(match, patternDef) {
   return [];
 }
 
+function getMetaVariable(match, key) {
+  if (!match || !match.metaVariables) return null;
+  if (match.metaVariables[key]) return match.metaVariables[key];
+  if (match.metaVariables.single && match.metaVariables.single[key]) {
+    return match.metaVariables.single[key];
+  }
+  return null;
+}
+
 /**
  * Extract a single name from ast-grep match
  * @param {Object} match - ast-grep match result
@@ -472,11 +657,10 @@ function extractNameFromMatch(match, nameVar) {
   }
   vars.push('NAME', 'FUNC', 'CLASS', 'IDENT', 'N');
 
-  if (match.metaVariables) {
-    for (const key of vars) {
-      if (match.metaVariables[key]) {
-        return match.metaVariables[key].text;
-      }
+  for (const key of vars) {
+    const variable = getMetaVariable(match, key);
+    if (variable && variable.text) {
+      return variable.text;
     }
   }
 
@@ -501,8 +685,9 @@ function extractSourceFromMatch(match, patternDef) {
   const def = typeof patternDef === 'string' ? {} : (patternDef || {});
   const sourceVar = def.sourceVar || 'SOURCE';
 
-  if (match.metaVariables && match.metaVariables[sourceVar]) {
-    const raw = match.metaVariables[sourceVar].text.replace(/^['"]|['"]$/g, '');
+  const variable = getMetaVariable(match, sourceVar);
+  if (variable && variable.text) {
+    const raw = variable.text.replace(/^['"]|['"]$/g, '');
     if (def.multiSource) {
       return splitMultiSource(raw);
     }
