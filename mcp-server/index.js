@@ -22,6 +22,7 @@ const fs = require('fs').promises;
 const fsSync = require('fs');
 const { promisify } = require('util');
 const { exec } = require('child_process');
+const { Worker } = require('worker_threads');
 const execAsync = promisify(exec);
 const workflowState = require('../lib/state/workflow-state.js');
 const { runPipeline, formatHandoffPrompt, CERTAINTY, THOROUGHNESS } = require('../lib/patterns/pipeline.js');
@@ -30,6 +31,77 @@ const enhance = require('../lib/enhance/index.js');
 
 // Plugin root for relative paths
 const PLUGIN_ROOT = process.env.PLUGIN_ROOT || path.join(__dirname, '..');
+const REPO_ROOT = process.cwd();
+
+function resolveRepoPath(inputPath) {
+  if (!inputPath) return null;
+  const resolved = path.resolve(REPO_ROOT, inputPath);
+  const withinRepo = resolved === REPO_ROOT || resolved.startsWith(REPO_ROOT + path.sep);
+  return withinRepo ? resolved : null;
+}
+
+function toRepoRelative(resolvedPath) {
+  const relative = path.relative(REPO_ROOT, resolvedPath);
+  if (!relative) return '.';
+  return relative.split(path.sep).join('/');
+}
+
+function filterRepoFiles(files) {
+  const allowed = [];
+  const rejected = [];
+
+  for (const file of files) {
+    if (!file) continue;
+    const resolved = resolveRepoPath(file);
+    if (!resolved) {
+      rejected.push(file);
+      continue;
+    }
+    allowed.push(toRepoRelative(resolved));
+  }
+
+  return { allowed, rejected };
+}
+
+function runPipelineAsync(repoPath, options) {
+  const pipelinePath = path.join(PLUGIN_ROOT, 'lib', 'patterns', 'pipeline.js');
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(
+      `const { parentPort, workerData } = require('worker_threads');
+       try {
+         const { runPipeline } = require(workerData.pipelinePath);
+         const result = runPipeline(workerData.repoPath, workerData.options);
+         parentPort.postMessage({ ok: true, result });
+       } catch (error) {
+         parentPort.postMessage({ ok: false, error: { message: error.message, stack: error.stack } });
+       }`,
+      {
+        eval: true,
+        workerData: {
+          repoPath,
+          options,
+          pipelinePath
+        }
+      }
+    );
+
+    worker.once('message', (message) => {
+      worker.terminate();
+      if (message.ok) {
+        resolve(message.result);
+      } else {
+        const err = new Error(message.error?.message || 'Pipeline worker failed');
+        err.stack = message.error?.stack;
+        reject(err);
+      }
+    });
+
+    worker.once('error', (error) => {
+      worker.terminate();
+      reject(error);
+    });
+  });
+}
 
 // MCP_TOOLS_ARRAY - Define available tools
 const TOOLS = [
@@ -106,7 +178,7 @@ const TOOLS = [
         },
         customFile: {
           type: 'string',
-          description: 'Path to custom task file (required when source is "custom"). Parses markdown checkboxes.'
+          description: 'Repo-relative path to custom task file (required when source is "custom"). Parses markdown checkboxes.'
         }
       },
       required: []
@@ -121,7 +193,7 @@ const TOOLS = [
         files: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Files to review (defaults to git diff)'
+          description: 'Repo-relative files to review (defaults to git diff)'
         },
         thoroughness: {
           type: 'string',
@@ -144,7 +216,7 @@ const TOOLS = [
       properties: {
         path: {
           type: 'string',
-          description: 'Directory or file to scan (default: current directory)'
+          description: 'Repo-relative directory or file to scan (default: repo root)'
         },
         mode: {
           type: 'string',
@@ -492,12 +564,19 @@ const toolHandlers = {
           };
         }
 
-        // Validate file path - prevent path traversal
-        const normalizedPath = path.normalize(customFile);
-        // Note: absolute paths and '..' are allowed but monitored via file access
+        const resolvedCustomFile = resolveRepoPath(customFile);
+        if (!resolvedCustomFile) {
+          return {
+            content: [{
+              type: 'text',
+              text: `Error: customFile must be within the repository. Received "${customFile}".`
+            }],
+            isError: true
+          };
+        }
 
         try {
-          const content = await fs.readFile(customFile, 'utf-8');
+          const content = await fs.readFile(resolvedCustomFile, 'utf-8');
           const lines = content.split('\n');
           const taskLines = lines.filter(line => /^[-*]\s+\[\s*\]\s+/.test(line));
 
@@ -512,7 +591,7 @@ const toolHandlers = {
               title: text,
               type: isSecurity ? 'security' : isBug ? 'bug' : isFeature ? 'feature' : 'task',
               labels: [],
-              source: customFile
+              source: toRepoRelative(resolvedCustomFile)
             };
           });
 
@@ -597,12 +676,34 @@ const toolHandlers = {
         return crossPlatform.successResponse('No files to review. No changes detected.');
       }
 
+      const { allowed, rejected } = filterRepoFiles(filesToReview);
+      if (rejected.length > 0) {
+        return crossPlatform.errorResponse(
+          `Invalid file path(s) outside the repository: ${rejected.join(', ')}`
+        );
+      }
+      filesToReview = allowed;
+
+      if (!filesToReview.length) {
+        return crossPlatform.errorResponse('No valid files to review after path validation.');
+      }
+
       // Use the full pipeline for detection
-      const result = runPipeline(process.cwd(), {
-        thoroughness: thoroughness || THOROUGHNESS.NORMAL,
-        targetFiles: filesToReview,
-        mode: 'report'
-      });
+      let result;
+      try {
+        result = await runPipelineAsync(process.cwd(), {
+          thoroughness: thoroughness || THOROUGHNESS.NORMAL,
+          targetFiles: filesToReview,
+          mode: 'report'
+        });
+      } catch (error) {
+        console.warn(`Pipeline worker failed, falling back to sync run: ${error.message}`);
+        result = runPipeline(process.cwd(), {
+          thoroughness: thoroughness || THOROUGHNESS.NORMAL,
+          targetFiles: filesToReview,
+          mode: 'report'
+        });
+      }
 
       // Use compact format by default for MCP (token efficiency)
       const useCompact = compact !== false;
@@ -626,20 +727,34 @@ const toolHandlers = {
 
   async slop_detect({ path: scanPath, mode, thoroughness, compact }) {
     try {
-      const targetPath = scanPath || process.cwd();
+      const resolvedTargetPath = resolveRepoPath(scanPath || REPO_ROOT);
+      if (!resolvedTargetPath) {
+        return crossPlatform.errorResponse(
+          `Invalid path outside repository: ${scanPath}`
+        );
+      }
 
       // Validate path exists
       try {
-        await fs.access(targetPath);
+        await fs.access(resolvedTargetPath);
       } catch (e) {
-        return crossPlatform.errorResponse(`Path not found: ${targetPath}`);
+        return crossPlatform.errorResponse(`Path not found: ${resolvedTargetPath}`);
       }
 
       // Run the 3-phase pipeline
-      const result = runPipeline(targetPath, {
-        thoroughness: thoroughness || THOROUGHNESS.NORMAL,
-        mode: mode || 'report'
-      });
+      let result;
+      try {
+        result = await runPipelineAsync(resolvedTargetPath, {
+          thoroughness: thoroughness || THOROUGHNESS.NORMAL,
+          mode: mode || 'report'
+        });
+      } catch (error) {
+        console.warn(`Pipeline worker failed, falling back to sync run: ${error.message}`);
+        result = runPipeline(resolvedTargetPath, {
+          thoroughness: thoroughness || THOROUGHNESS.NORMAL,
+          mode: mode || 'report'
+        });
+      }
 
       // Use compact format by default for MCP (60% fewer tokens)
       const useCompact = compact !== false;
@@ -650,7 +765,7 @@ const toolHandlers = {
 
       // Return structured result
       return crossPlatform.successResponse({
-        path: targetPath,
+        path: toRepoRelative(resolvedTargetPath),
         mode: mode || 'report',
         thoroughness: thoroughness || 'normal',
         filesAnalyzed: result.metadata.filesAnalyzed,
