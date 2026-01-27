@@ -174,7 +174,7 @@ For HIGH certainty issues with available fixes:
 
 This agent can be invoked by:
 - `/enhance:plugin` command
-- `review-orchestrator` during PR review
+- Phase 9 review loop during workflow
 - `delivery-validator` before shipping
 
 ## Quality Multiplier

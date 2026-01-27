@@ -25,7 +25,7 @@ Auto-adapts to your project's CI platform, deployment platform, and branch strat
 ## Integration with /next-task
 
 When called from `/next-task` workflow (via `--state-file`):
-- **SKIPS Phase 5** internal review agents (already done by review-orchestrator)
+- **SKIPS Phase 5** internal review agents (already done by Phase 9 review loop)
 - **SKIPS deslop/docs** (already done by deslop-work, docs-updater)
 - **Trusts** that all quality gates passed
 

@@ -4,6 +4,8 @@ This file contains detailed agent coordination for `/audit-project`.
 
 **Parent document**: `audit-project.md`
 
+**Review Pass Definitions**: See `orchestrate-review` skill for canonical pass definitions (core + conditional). This command uses the same review passes but detects signals from project structure (not just changed files).
+
 ## Agent Specialization
 
 ### File Filtering by Agent

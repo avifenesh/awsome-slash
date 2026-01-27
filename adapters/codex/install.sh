@@ -124,8 +124,47 @@ for mapping in "${SKILL_MAPPINGS[@]}"; do
   fi
 done
 
+# Install native skills (already have SKILL.md format)
+echo
+echo "📚 Installing native skills..."
+
+# Native skill mappings: skill_name:plugin:skill_name_in_source
+NATIVE_SKILL_MAPPINGS=(
+  "orchestrate-review:next-task:orchestrate-review"
+)
+
+for mapping in "${NATIVE_SKILL_MAPPINGS[@]}"; do
+  IFS=':' read -r SKILL_NAME PLUGIN SOURCE_SKILL <<< "$mapping"
+  SOURCE_SKILL_DIR="$REPO_ROOT/plugins/$PLUGIN/skills/$SOURCE_SKILL"
+  TARGET_SKILL_DIR="$CODEX_SKILLS_DIR/$SKILL_NAME"
+
+  if [ -d "$SOURCE_SKILL_DIR" ]; then
+    # Create skill directory
+    mkdir -p "$TARGET_SKILL_DIR"
+
+    # Copy SKILL.md
+    if [ -f "$SOURCE_SKILL_DIR/SKILL.md" ]; then
+      cp "$SOURCE_SKILL_DIR/SKILL.md" "$TARGET_SKILL_DIR/SKILL.md"
+      echo "  ✓ Installed native skill: \$${SKILL_NAME}"
+    else
+      echo "  ⚠️  Skipped \$${SKILL_NAME} (SKILL.md not found)"
+      continue
+    fi
+
+    # Copy optional subdirectories (references/, scripts/, assets/)
+    for subdir in references scripts assets; do
+      if [ -d "$SOURCE_SKILL_DIR/$subdir" ]; then
+        cp -r "$SOURCE_SKILL_DIR/$subdir" "$TARGET_SKILL_DIR/"
+        echo "    ✓ Copied $subdir/ directory"
+      fi
+    done
+  else
+    echo "  ⚠️  Skipped \$${SKILL_NAME} (source not found: $SOURCE_SKILL_DIR)"
+  fi
+done
+
 # Remove old/deprecated skills and prompts
-OLD_SKILLS=("deslop" "review" "reality-check-set" "pr-merge")
+OLD_SKILLS=("deslop" "review" "reality-check-set" "pr-merge" "review-orchestrator")
 for old_skill in "${OLD_SKILLS[@]}"; do
   if [ -d "$CODEX_SKILLS_DIR/$old_skill" ]; then
     rm -rf "$CODEX_SKILLS_DIR/$old_skill"

@@ -334,7 +334,7 @@ Respond with a JSON object:
 
 This agent can be invoked by:
 - `/enhance:prompt` command
-- `review-orchestrator` during PR review
+- Phase 9 review loop during workflow
 - Individual analysis workflows
 
 ## Quality Multiplier

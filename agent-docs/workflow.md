@@ -25,7 +25,7 @@ The main orchestrator **MUST spawn these agents in order**:
 | 7 | `implementation-agent` | opus | Read, Write, Edit, Bash | Execute plan |
 | 8 | `deslop-work` | sonnet | Read, Grep, Edit, Bash(git:*) | Clean AI slop (uses pipeline.js) |
 | 8 | `test-coverage-checker` | sonnet | Bash(npm:*), Read, Grep | Validate test coverage |
-| 9 | `review-orchestrator` | opus | Task(review) | Multi-pass review loop |
+| 9 | Phase 9 review loop | sonnet reviewers | Task(general-purpose) | Multi-pass review with parallel agents |
 | 10 | `delivery-validator` | sonnet | Bash(npm:*), Read | Validate completion |
 | 11 | `docs-updater` | sonnet | Read, Edit, Task(simple-fixer) | Update documentation |
 | 12 | `/ship` command | - | - | PR creation and merge |
@@ -34,13 +34,13 @@ The main orchestrator **MUST spawn these agents in order**:
 
 - **`exploration-agent`** - Required for understanding codebase before planning
 - **`planning-agent`** - Required for creating implementation plan
-- **`review-orchestrator`** - Required for code review before shipping
+- **Phase 9 review loop** - Required for code review before shipping (uses orchestrate-review skill)
 - **`delivery-validator`** - Required before calling /ship
 
 ### Review Decision Gate
 
-If review-orchestrator reports `blocked: true` (iteration limit or stall), /next-task must decide:
-- Re-run review-orchestrator with `--resume`, or
+If Phase 9 review loop reports `blocked: true` (iteration limit or stall), /next-task must decide:
+- Re-run Phase 9 review loop, or
 - Override and continue if issues are non-blocking (clear the queue file).
 
 ---

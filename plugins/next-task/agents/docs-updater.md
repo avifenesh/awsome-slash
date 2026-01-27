@@ -359,7 +359,7 @@ This agent is called:
 ✓ implementation-agent completed
 ✓ deslop-work ran on new code
 ✓ test-coverage-checker ran (advisory)
-✓ review-orchestrator APPROVED
+✓ Phase 9 review loop APPROVED
 ✓ delivery-validator APPROVED
 ```
 
@@ -380,7 +380,7 @@ implementation-agent
         ↓
    Pre-review gates
         ↓
-review-orchestrator (approved)
+Phase 9 review loop (approved)
         ↓
 delivery-validator (approved)
         ↓

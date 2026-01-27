@@ -363,7 +363,7 @@ implementation-agent (YOU ARE HERE)
         ↓
    Pre-review gates: deslop-work + test-coverage-checker
         ↓
-   review-orchestrator (must approve)
+   Phase 9 review loop (must approve)
         ↓
    delivery-validator (must approve)
         ↓
@@ -409,7 +409,7 @@ ${gitLog}
 ---
 ⏸️ STOPPING HERE - SubagentStop hook will trigger pre-review gates
    → deslop-work + test-coverage-checker (parallel)
-   → review-orchestrator
+   → Phase 9 review loop
    → delivery-validator
    → docs-updater
    → /ship

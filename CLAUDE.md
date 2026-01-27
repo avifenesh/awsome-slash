@@ -49,7 +49,7 @@ lib/                    # Shared library (canonical source)
 └── index.js            # Main exports
 
 plugins/                # Claude Code plugins
-├── next-task/          # Master workflow (14 agents)
+├── next-task/          # Master workflow (12 agents)
 ├── ship/               # PR workflow
 ├── deslop/      # AI slop cleanup
 ├── audit-project/     # Multi-agent review
@@ -91,7 +91,7 @@ Platform-aware: `.claude/` (Claude), `.opencode/` (OpenCode), `.codex/` (Codex)
 Cannot skip in /next-task:
 - `exploration-agent` → before planning
 - `planning-agent` → before implementation
-- `review-orchestrator` → before shipping
+- **Phase 9 review loop** → MUST use orchestrate-review skill, spawns parallel reviewers, iterates until clean
 - `delivery-validator` → before /ship
 
 ## PR Auto-Review
@@ -137,6 +137,6 @@ Choose the appropriate model based on task complexity and quality multiplier eff
 **Examples**:
 - `/enhance:agent` uses opus - false positives damage agent quality across entire codebase
 - `simple-fixer` uses haiku - mechanically applies pre-defined fixes with no judgment
-- `review-orchestrator` uses opus - review quality affects entire workflow
+- Phase 9 review loop spawns sonnet reviewers - multiple focused agents reduce rubber-stamping
 - `worktree-manager` uses haiku - scripted git commands with no decision-making
 

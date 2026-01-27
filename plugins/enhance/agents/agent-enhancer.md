@@ -319,7 +319,7 @@ This agent processes files...
 
 This agent can be invoked by:
 - `/enhance:agent` command
-- `review-orchestrator` during PR review
+- Phase 9 review loop during workflow
 - `delivery-validator` before shipping
 - Individual analysis workflows
 

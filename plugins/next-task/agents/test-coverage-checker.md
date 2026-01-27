@@ -416,7 +416,7 @@ ${summary.recommendation}
 ## Behavior
 
 - **Advisory only** - Does NOT block workflow
-- Reports coverage gaps to review-orchestrator
+- Reports coverage gaps to Phase 9 review loop
 - Suggestions included in PR description
 - Implementation-agent may optionally add tests based on findings
 
@@ -424,7 +424,7 @@ ${summary.recommendation}
 
 This agent is called:
 1. **Before first review round** - In parallel with deslop-work
-2. Results passed to review-orchestrator for context
+2. Results passed to Phase 9 review loop for context
 
 ## Success Criteria
 

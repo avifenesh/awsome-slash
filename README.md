@@ -75,7 +75,7 @@ This means you can run `/deslop apply` and trust that it won't break things.
 
 ### 2. Review Loops With Safeguards
 
-The review-orchestrator agent runs core review passes (code quality, security, performance, test coverage) plus conditional specialists until there are no open issues. Then it runs deslop-work on its own fixes to catch any AI artifacts it introduced.
+The Phase 9 review loop spawns parallel reviewer agents (code quality, security, performance, test coverage) plus conditional specialists, iterating until no open issues remain. It runs deslop-work after each iteration to catch any AI artifacts.
 
 ### 3. Workflow Enforcement
 
@@ -122,7 +122,7 @@ Frontier models write good code. That's solved. What's not solved:
 
 **1. One agent, one job, done extremely well**
 
-Same principle as good code: single responsibility. The exploration-agent explores. The implementation-agent implements. The review-orchestrator coordinates reviews. No agent tries to do everything. 29 specialized agents, each with narrow scope and clear success criteria.
+Same principle as good code: single responsibility. The exploration-agent explores. The implementation-agent implements. Phase 9 spawns multiple focused reviewers. No agent tries to do everything. 28 specialized agents, each with narrow scope and clear success criteria.
 
 **2. Pipeline with gates, not a monolith**
 
@@ -239,7 +239,6 @@ With proper workflow structure, context management, and quality gates, AI agents
 | implementation-agent | opus | Writes the actual code |
 | deslop-work | sonnet | Removes AI artifacts before review |
 | test-coverage-checker | sonnet | Validates tests exist and are meaningful |
-| review-orchestrator | opus | Coordinates parallel review agents |
 | delivery-validator | sonnet | Final checks before shipping |
 | docs-updater | sonnet | Updates documentation |
 | ci-monitor | haiku | Watches CI status |
@@ -552,7 +551,7 @@ implementation-agent writes code
     ↓
 deslop-work cleans AI artifacts
     ↓
-review-orchestrator iterates until approved
+Phase 9 review loop iterates until approved
     ↓
 delivery-validator checks requirements
     ↓

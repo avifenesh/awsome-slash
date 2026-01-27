@@ -184,7 +184,7 @@ mutation($threadId: ID!) {
 
 ### Phase 7: Internal Review (Standalone Only)
 
-**Skipped when called from `/next-task`** (review already completed by review-orchestrator).
+**Skipped when called from `/next-task`** (review already completed by Phase 9 review loop).
 
 When standalone, launches core review passes in parallel:
 - Code quality (includes error handling)
@@ -335,7 +335,7 @@ Outputs detailed logging for each phase.
 When called from `/next-task` (via `--state-file` argument):
 
 **Skipped phases:**
-- Phase 7 (internal review) - Already done by review-orchestrator
+- Phase 7 (internal review) - Already done by Phase 9 review loop
 - Deslop cleanup - Already done by deslop-work
 
 **Still runs:**
