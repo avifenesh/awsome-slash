@@ -269,6 +269,7 @@ function isShortCodeToken(token) {
 function buildSymbolIndex(map) {
   const index = [];
   for (const [file, data] of Object.entries(map.files || {})) {
+    if (isTestFile(file) || isDocLikePath(file)) continue;
     const symbols = data.symbols || {};
     for (const [kind, list] of Object.entries(symbols)) {
       if (!Array.isArray(list)) continue;
@@ -410,6 +411,21 @@ function isTestFile(filePath) {
   return false;
 }
 
+function isDocLikePath(filePath) {
+  if (!filePath) return false;
+  const normalized = String(filePath).replace(/\\/g, '/').toLowerCase();
+  if (normalized.includes('/docs/')) return true;
+  if (normalized.includes('/documentation/')) return true;
+  if (normalized.includes('/doc/')) return true;
+  if (normalized.includes('/examples/')) return true;
+  if (normalized.includes('/example/')) return true;
+  if (normalized.includes('/samples/')) return true;
+  if (normalized.includes('/sample/')) return true;
+  if (normalized.includes('/guides/')) return true;
+  if (normalized.includes('/guide/')) return true;
+  return false;
+}
+
 function buildReverseDependencies(map, fileSet) {
   const reverse = new Map();
   for (const [file, deps] of Object.entries(map.dependencies || {})) {
@@ -448,7 +464,7 @@ function matchFeatureToFiles(feature, map, limit) {
   const matches = [];
 
   for (const file of files) {
-    if (isTestFile(file)) continue;
+    if (isTestFile(file) || isDocLikePath(file)) continue;
     const fileLower = file.toLowerCase();
     const matched = new Set();
     for (const token of tokens) {
@@ -487,7 +503,7 @@ function matchFeatureToDiskFiles(basePath, feature, options) {
   const files = listCodeFiles(basePath, maxScan);
 
   for (const file of files) {
-    if (isTestFile(file)) continue;
+    if (isTestFile(file) || isDocLikePath(file)) continue;
     const fileLower = file.toLowerCase();
     const matched = new Set();
     for (const token of tokens) {
