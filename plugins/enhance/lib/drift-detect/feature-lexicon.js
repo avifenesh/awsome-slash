@@ -17,7 +17,8 @@ const FEATURE_SECTION_PATTERNS = [
   /^what it does$/i,
   /^description$/i,
   /^functionality$/i,
-  /^core features?$/i
+  /^core features?$/i,
+  /^packages?$/i
 ];
 
 const NON_FEATURE_SECTION_PATTERNS = [

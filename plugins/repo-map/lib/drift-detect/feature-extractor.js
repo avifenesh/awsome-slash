@@ -1190,8 +1190,9 @@ function isGoalListContext(lines, index) {
     if (!prior) continue;
     const normalized = normalizeText(prior);
     if (!normalized) continue;
-    if (/(goal|goals|goal list)/.test(normalized)) return true;
+    if (/(goal|goals|goal list|principle|principles|philosophy|values|tenets|manifesto)/.test(normalized)) return true;
     if (normalized.endsWith('should be') || normalized.endsWith('should be:')) return true;
+    if (normalized.includes('we follow these principles')) return true;
     if (normalized.includes('we strive to fulfill the goals')) return true;
   }
   return false;
