@@ -110,7 +110,10 @@ const LOW_SIGNAL_CONTAINS = [
   'this is done',
   'developer experience',
   'time traveling',
-  'feature-rich development experience'
+  'feature-rich development experience',
+  'convenience functions',
+  'without additional dependencies',
+  'work on any platform'
 ];
 
 const LOW_SIGNAL_REGEX = [

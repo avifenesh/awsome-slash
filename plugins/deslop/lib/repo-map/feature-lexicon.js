@@ -98,7 +98,8 @@ const TOKEN_ALIASES = {
   optimization: ['optimize', 'optimise', 'optimized', 'optimised', 'optimizing', 'optimising'],
   optimizations: ['optimization', 'optimize', 'optimise'],
   offline: ['service-worker', 'serviceworker', 'service_worker'],
-  image: ['images']
+  image: ['images'],
+  menus: ['menu']
 };
 
 module.exports = {

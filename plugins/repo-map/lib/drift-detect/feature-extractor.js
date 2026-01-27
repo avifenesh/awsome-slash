@@ -31,6 +31,15 @@ const DEFAULT_OPTIONS = {
   maxLength: 120
 };
 
+const ALLOWED_SINGLE_TOKENS = new Set([
+  'API', 'SDK', 'CLI', 'TLS', 'SSL', 'JWT', 'OIDC', 'SAML', 'SSO', 'MFA',
+  'HTTP', 'HTTPS', 'GRPC', 'REST', 'GRAPHQL', 'UI', 'UX', 'SQL', 'S3'
+]);
+
+const SHORT_TOKENS = new Set([
+  'az', 'js', 'ts', 'ui', 'ux', 'ai', 'ml', 'db', 'io'
+]);
+
 function extractFeaturesFromDocs(documents = [], options = {}) {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   const results = [];
@@ -769,6 +778,9 @@ function cleanupFeatureText(text) {
   if (cleaned.includes(' - ')) {
     cleaned = cleaned.split(' - ')[0].trim();
   }
+  if (cleaned.includes(' – ')) {
+    cleaned = cleaned.split(' – ')[0].trim();
+  }
   if (cleaned.includes(' — ')) {
     cleaned = cleaned.split(' — ')[0].trim();
   }
@@ -902,13 +914,21 @@ function isFormulaLine(line, candidate) {
   const normalized = normalizeText(text);
   if (!normalized) return false;
   if (normalized.includes('equivalent to') || normalized.includes('is equivalent')) return true;
-  const hasDigits = /\d/.test(raw);
-  const hasOps = /[+\-/*%^]/.test(raw);
-  const hasParen = /[()]/.test(raw);
-  const opCount = (raw.match(/[+\-/*%^]/g) || []).length;
-  if (hasOps && hasParen && (hasDigits || opCount >= 1)) return true;
-  if (/\b(step\(\)|sum\(|rate\(|min\(|max\(|avg\(|count\(|quantile\(|sumovertime\()\b/i.test(raw)) return true;
-  if (/\/\s*:\s*/.test(raw)) return true;
+  const cleanedRaw = raw
+    .replace(/\[[^\]]+\]\([^)]+\)/g, '')
+    .replace(/^\s*(?:[-*+]|\d+\.)\s+/, '');
+  const hasDigits = /\d/.test(cleanedRaw);
+  const letterCount = (cleanedRaw.match(/[A-Za-z]/g) || []).length;
+  const opCount = (cleanedRaw.match(/[+\-/*%^]/g) || []).length;
+  const mathCount = (cleanedRaw.match(/[0-9+\-/*%^=]/g) || []).length;
+  if (letterCount > 12 && mathCount < 4) return false;
+  if (letterCount > mathCount * 2) return false;
+  const hasOps = opCount > 0;
+  const hasParen = /[()]/.test(cleanedRaw);
+  if (hasDigits && hasOps && hasParen) return true;
+  if (hasDigits && opCount >= 2) return true;
+  if (/\b(step\(\)|sum\(|rate\(|min\(|max\(|avg\(|count\(|quantile\(|sumovertime\()\b/i.test(cleanedRaw)) return true;
+  if (/\/\s*:\s*/.test(cleanedRaw)) return true;
   return false;
 }
 
@@ -916,12 +936,14 @@ function isConfigKeyLine(candidate, line) {
   const trimmed = String(candidate || '').trim();
   if (!trimmed) return false;
   const full = String(line || '');
+  const cleanedLine = full.replace(/\[[^\]]+\]\([^)]+\)/g, '');
   const firstToken = trimmed.split(/\s+/)[0] || trimmed;
   if (/^--/.test(firstToken)) return true;
   if (!/^[a-z0-9_.-]+$/i.test(firstToken)) return false;
   if (firstToken.length < 4 || firstToken.length > 40) return false;
-  if (full.includes('#') || full.includes('=')) return true;
-  if (/(enable|disable|flag|option|setting)/i.test(firstToken) && firstToken.length <= 30) return true;
+  if (cleanedLine.includes('#') || cleanedLine.includes('=')) return true;
+  const tokenLower = firstToken.toLowerCase();
+  if (['enable', 'disable', 'flag', 'option', 'setting'].includes(tokenLower) && firstToken.length <= 30) return true;
   return false;
 }
 
@@ -1014,6 +1036,7 @@ function buildFeatureRecord(name, filePath, lineNumber, contextLine, options) {
   if (trimmedName.startsWith('@')) return null;
   if (trimmedName.length < options.minLength || trimmedName.length > options.maxLength) return null;
   if (isGenericLabel(trimmedName)) return null;
+  if (isEnvVarListing(trimmedName, contextLine)) return null;
 
   const sourceType = detectSourceType(filePath);
   if (sourceType === 'release' && (isReleaseHeading(trimmedName) || isReleaseNoise(trimmedName))) return null;
@@ -1025,7 +1048,9 @@ function buildFeatureRecord(name, filePath, lineNumber, contextLine, options) {
   if (sourceType === 'plan' && (isInstructionalText(normalized) || isPlanInstruction(normalized))) return null;
   if (sourceType === 'plan' && /^(manual test|test flow)/.test(normalized)) return null;
   if ((sourceType === 'docs' || sourceType === 'doc') && isInstructionalText(normalized)) {
-    if (!/\bfeatures?\s+include/i.test(contextLine || '')) return null;
+    const allowDocShould = /^\s*(?:[-*+]|\d+\.)\s+/.test(contextLine || '')
+      && /\bshould\s+(work|run|support)\b/.test(normalized);
+    if (!allowDocShould && !/\bfeatures?\s+include/i.test(contextLine || '')) return null;
   }
   if (sourceType === 'readme' && isInstructionalText(normalized) && looksLikeInstructionContext(contextLine)) return null;
   const tokens = tokenize(normalized);
@@ -1069,7 +1094,11 @@ function tokenize(text) {
   return String(text || '')
     .split(/\s+/)
     .map(token => token.trim())
-    .filter(token => token.length >= 3 && !STOPWORDS.has(token));
+    .filter(token => {
+      if (!token || STOPWORDS.has(token)) return false;
+      if (token.length >= 3) return true;
+      return token.length === 2 && SHORT_TOKENS.has(token);
+    });
 }
 
 function looksLikeFeatureItem(text) {
@@ -1229,11 +1258,28 @@ function isReleaseNoise(text) {
   return false;
 }
 
-function isLowSignalText(normalized) {
+function stripLinks(raw) {
+  return String(raw || '')
+    .replace(/\[[^\]]+\]\([^)]+\)/g, ' ')
+    .replace(/https?:\/\/\S+/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isLowSignalText(normalized, raw) {
   if (!normalized) return true;
   if (LOW_SIGNAL_EXACT.has(normalized)) return true;
   for (const prefix of LOW_SIGNAL_PREFIXES) {
     if (normalized.startsWith(prefix)) return true;
+  }
+  if (normalized.startsWith('optional ') && normalized.split(' ').length <= 3) return true;
+  if (normalized.endsWith(' endpoint') && normalized.split(' ').length <= 3) return true;
+  if (normalized.endsWith(' endpoints') && normalized.split(' ').length <= 3) return true;
+  if (raw && /https?:\/\//i.test(raw)) {
+    const stripped = stripLinks(raw);
+    const strippedNormalized = normalizeText(stripped);
+    const wordCount = strippedNormalized.split(' ').filter(Boolean).length;
+    if (wordCount <= 3 || strippedNormalized.length < 12) return true;
   }
   for (const fragment of LOW_SIGNAL_CONTAINS) {
     if (normalized.includes(fragment)) return true;
@@ -1245,7 +1291,6 @@ function isLowSignalText(normalized) {
   if (normalized.endsWith('such as') || normalized.endsWith('including')) return true;
   if (normalized.startsWith('vite ') && /\d/.test(normalized)) return true;
   if (normalized.includes('version') && /\d/.test(normalized)) return true;
-  if (normalized.includes('http') || normalized.includes('https')) return true;
   if (normalized.includes('build matrix')) return true;
   if (normalized.startsWith('--') || normalized.startsWith('-')) return true;
   if (/^(get|post|put|delete|patch|options|head)$/.test(normalized)) return true;
@@ -1262,8 +1307,14 @@ function isLowSignalText(normalized) {
 
 function isInstructionalText(normalized) {
   if (!normalized) return false;
-  const cleaned = normalized.replace(/^(optional|optionally)\s+/, '');
-  return /^(create|add|copy|update|remove|delete|install|configure|setup|set up|run|download|clone|check|verify|use|open|start|stop|build|compile|generate|train|fine tune|fine-tune|evaluate|export|edit|write)\b/.test(cleaned);
+  const cleaned = normalized.replace(/^(optional|optionally|or|then)\s+/, '');
+  if (/^learn\b/.test(cleaned)) {
+    return /\blearn\s+(how to|to|more|about)\b/.test(cleaned);
+  }
+  if (/^read\b/.test(cleaned)) {
+    return /\bread\s+(the|more|about|docs|documentation)\b/.test(cleaned);
+  }
+  return /^(create|add|copy|update|remove|delete|install|configure|setup|set up|run|download|clone|check|verify|use|open|start|stop|build|compile|generate|train|fine tune|fine-tune|evaluate|export|edit|write|grab|join|get|visit|see|follow|try|ensure|should|must|need to|you should)\b/.test(cleaned);
 }
 
 function isPlanInstruction(normalized) {
@@ -1275,7 +1326,10 @@ function looksLikeInstructionContext(contextLine) {
   const line = String(contextLine || '').toLowerCase();
   if (!line) return false;
   if (/^\s*\d+\.\s+/.test(line)) return true;
-  if (/^\s*[-*+]\s+/.test(line) && /(install|build|run|download|configure|setup|enable)/.test(line)) return true;
+  if (/^\s*[-*+]\s+/.test(line)) {
+    if (/\blearn\b/.test(line) && /\blearn\s+(how to|to|more|about)\b/.test(line)) return true;
+    if (/(install|build|run|download|configure|setup|enable|get|grab|join|visit|read|see|follow|try)\b/.test(line)) return true;
+  }
   if (/(pip install|brew install|apt install|yum install|docker run|docker build)/.test(line)) return true;
   return false;
 }
@@ -1284,6 +1338,8 @@ function isGoalListContext(lines, index) {
   for (let back = 1; back <= 4; back += 1) {
     const prior = lines[index - back];
     if (!prior) continue;
+    const trimmedPrior = String(prior || '').trim();
+    if (/^[-*+]\s+/.test(trimmedPrior)) continue;
     const normalized = normalizeText(prior);
     if (!normalized) continue;
     if (/(goal|goals|goal list|principle|principles|philosophy|values|tenets|manifesto)/.test(normalized)) return true;
@@ -1297,8 +1353,33 @@ function isGoalListContext(lines, index) {
 function isAllowedSingleToken(text) {
   const trimmed = String(text || '').trim();
   if (!trimmed) return false;
-  if (trimmed.includes('-')) return true;
-  return /^[A-Z][A-Za-z0-9]{5,}$/.test(trimmed);
+  const upper = trimmed.toUpperCase();
+  if (ALLOWED_SINGLE_TOKENS.has(upper)) return true;
+  if (trimmed.includes('-')) {
+    if (/^[A-Z0-9_-]+$/.test(trimmed)) return false;
+    return true;
+  }
+  if (/^[A-Z0-9_]+$/.test(trimmed)) return false;
+  return /^[A-Z][A-Za-z0-9]{4,}$/.test(trimmed);
+}
+
+function isEnvVarListing(text, contextLine) {
+  const raw = String(text || '').trim();
+  if (!raw) return false;
+  const tokens = raw.match(/\b[A-Z][A-Z0-9_]{2,}\b/g) || [];
+  if (tokens.length === 0) return false;
+  const longTokens = tokens.filter(token => token.includes('_') || /\d/.test(token) || token.length >= 10);
+  if (longTokens.length === 0) return false;
+  if (tokens.length >= 2) return true;
+  const token = tokens[0];
+  if (raw === token) return true;
+  if (raw.startsWith(token)) {
+    const rest = raw.slice(token.length).trim();
+    if (/^(?:-|–|—|:)/.test(rest)) return true;
+    if (/(defaults?|default|env|environment|config|for\b|set\b|value\b)/i.test(rest)) return true;
+  }
+  if (contextLine && /(env var|environment variable|configuration|config)/i.test(contextLine)) return true;
+  return false;
 }
 
 function isFeatureDocPath(filePath) {
@@ -1321,6 +1402,9 @@ function isFeatureLeadLine(line) {
   if (normalized.endsWith('features:')) return true;
   if (normalized.includes('with the following features')) return true;
   if (normalized.includes('features include') || normalized.includes('features including')) return true;
+  if (normalized.includes('main features')) return true;
+  if (normalized.includes('features of')) return true;
+  if (normalized.includes('features are')) return true;
   return false;
 }
 

@@ -89,8 +89,11 @@ function findFeatureEvidence(basePath, features = [], options = {}) {
     const matches = matchFeatureToSymbols(feature, symbolIndex, opts.maxDefsPerFeature);
     if (matches.length === 0) {
       let fileMatches = matchFeatureToFiles(feature, map, opts.maxDefsPerFeature);
-      if (fileMatches.length === 0) {
-        fileMatches = matchFeatureToFlagStrings(basePath, map, feature, opts);
+      if (fileMatches.length === 0 || fileMatches.every(entry => entry.testOnly)) {
+        const hintMatches = matchFeatureToFlagStrings(basePath, map, feature, opts);
+        if (hintMatches.length > 0) {
+          fileMatches = hintMatches;
+        }
       }
       if (fileMatches.length === 0 && opts.enablePathFallback) {
         fileMatches = matchFeatureToDiskFiles(basePath, feature, opts);
@@ -160,8 +163,11 @@ function findFeatureEvidence(basePath, features = [], options = {}) {
 
     if (!implemented) {
       let fileMatches = matchFeatureToFiles(feature, map, opts.maxDefsPerFeature);
-      if (fileMatches.length === 0) {
-        fileMatches = matchFeatureToFlagStrings(basePath, map, feature, opts);
+      if (fileMatches.length === 0 || fileMatches.every(entry => entry.testOnly)) {
+        const hintMatches = matchFeatureToFlagStrings(basePath, map, feature, opts);
+        if (hintMatches.length > 0) {
+          fileMatches = hintMatches;
+        }
       }
       if (fileMatches.length === 0 && opts.enablePathFallback) {
         fileMatches = matchFeatureToDiskFiles(basePath, feature, opts);
@@ -622,20 +628,29 @@ function matchFeatureToFiles(feature, map, limit) {
 }
 
 function extractFlagHints(feature) {
-  const raw = [feature?.context, feature?.original].filter(Boolean).join(' ');
+  const raw = [feature?.context, feature?.original, feature?.normalized].filter(Boolean).join(' ');
   if (!raw) return [];
   const matches = raw.match(/--[a-z0-9][\w-]*/gi) || [];
+  const normalized = String(feature?.normalized || '').toLowerCase();
+  if (/\b(command[-\s]?line|argv|arguments?)\b/.test(normalized)) {
+    matches.push('argv', 'sys.argv');
+  }
   return Array.from(new Set(matches.map(match => match.toLowerCase())));
 }
 
 function expandFlagVariants(flag) {
-  const cleaned = flag.replace(/^--/, '').toLowerCase();
+  const cleaned = String(flag || '').toLowerCase();
   if (!cleaned) return [];
+  if (!cleaned.startsWith('--')) {
+    return [cleaned];
+  }
+  const base = cleaned.replace(/^--/, '');
+  if (!base) return [];
   const variants = new Set();
-  variants.add(`--${cleaned}`);
-  variants.add(cleaned);
-  variants.add(cleaned.replace(/-/g, '_'));
-  variants.add(cleaned.replace(/-/g, ''));
+  variants.add(`--${base}`);
+  variants.add(base);
+  variants.add(base.replace(/-/g, '_'));
+  variants.add(base.replace(/-/g, ''));
   return Array.from(variants);
 }
 
