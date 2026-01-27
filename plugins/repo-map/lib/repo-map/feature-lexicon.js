@@ -41,7 +41,9 @@ const GENERIC_SYMBOL_NAMES = new Set([
 
 const PATH_TOKEN_WHITELIST = new Set([
   'tls', 'ssl', 'jwt', 'grpc', 'ssh', 'oauth', 'oidc', 'cli', 'gui',
-  'sass', 'scss'
+  'sass', 'scss',
+  'auth', 'db', 'sql', 'api', 'http', 'rest', 'rpc', 'orm', 'ui', 'ux',
+  'esm', 'cjs'
 ]);
 
 const TOKEN_ALIASES = {
