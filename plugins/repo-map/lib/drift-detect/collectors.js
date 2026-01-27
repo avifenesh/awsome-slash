@@ -11,6 +11,21 @@
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const featureExtractor = require('./feature-extractor');
+const {
+  DOC_FILES,
+  DOC_POINTER_EXT,
+  shouldSkipFeatureDoc,
+  shouldSkipFeatureDocPath
+} = require('./doc-rules');
+
+let cachedRepoMap = null;
+function getRepoMap() {
+  if (!cachedRepoMap) {
+    cachedRepoMap = require('../repo-map');
+  }
+  return cachedRepoMap;
+}
 
 /**
  * Default options for data collection
@@ -21,7 +36,25 @@ const DEFAULT_OPTIONS = {
   issueLimit: 100,
   prLimit: 50,
   timeout: 10000, // 10s
-  cwd: process.cwd()
+  cwd: process.cwd(),
+  calculatePriority: false, // opt-in: calculate priority scores for issues
+  docFeatures: {
+    maxPerFile: 20,
+    maxTotal: 60
+  },
+  repoMap: {
+    maxFiles: 40,
+    maxSymbolsPerType: 20,
+    maxDependenciesPerFile: 10,
+    maxTerms: 30,
+    maxMatchesPerTerm: 6,
+    maxSymbolsPerMatch: 6,
+    maxFeatures: 40,
+    maxDefsPerFeature: 6,
+    maxRefsPerFeature: 6,
+    maxFilesScannedPerDef: 8,
+    snippetLines: 2
+  }
 };
 
 /**
@@ -71,6 +104,338 @@ function execGh(args, options = {}) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Parse Cargo.toml for Rust dependencies
+ * @param {string} basePath - Project root
+ * @param {string} cargoPath - Path to Cargo.toml (relative to basePath)
+ * @returns {Object|null} Parsed cargo info
+ */
+function parseCargoToml(basePath, cargoPath = 'Cargo.toml') {
+  const content = safeReadFile(cargoPath, basePath);
+  if (!content) return null;
+
+  const result = { dependencies: [], devDependencies: [] };
+
+  // Extract [dependencies] section
+  const depsMatch = content.match(/\[dependencies\]([\s\S]*?)(?:\n\[|$)/);
+  if (depsMatch) {
+    const lines = depsMatch[1].split('\n');
+    for (const line of lines) {
+      const match = line.match(/^([a-z0-9_-]+)\s*=/i);
+      if (match) result.dependencies.push(match[1]);
+    }
+  }
+
+  // Extract [dev-dependencies] section
+  const devMatch = content.match(/\[dev-dependencies\]([\s\S]*?)(?:\n\[|$)/);
+  if (devMatch) {
+    const lines = devMatch[1].split('\n');
+    for (const line of lines) {
+      const match = line.match(/^([a-z0-9_-]+)\s*=/i);
+      if (match) result.devDependencies.push(match[1]);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Parse Python project files for dependencies
+ * @param {string} basePath - Project root
+ * @param {string} subDir - Subdirectory (e.g., 'python/')
+ * @returns {Object|null} Parsed Python info
+ */
+function parsePythonProject(basePath, subDir = '') {
+  const prefix = subDir ? `${subDir}/` : '';
+  const result = { dependencies: [], devDependencies: [], type: null };
+
+  // Try pyproject.toml first
+  const pyproject = safeReadFile(`${prefix}pyproject.toml`, basePath);
+  if (pyproject) {
+    result.type = 'pyproject';
+    // Extract dependencies from [project] or [tool.poetry.dependencies]
+    const depsMatch = pyproject.match(/dependencies\s*=\s*\[([\s\S]*?)\]/);
+    if (depsMatch) {
+      const items = depsMatch[1].match(/"([^"]+)"/g) || [];
+      result.dependencies.push(...items.map(d => d.replace(/"/g, '').split(/[<>=~!]/)[0].trim()));
+    }
+  }
+
+  // Try requirements.txt or dev_requirements.txt
+  for (const reqFile of [`${prefix}requirements.txt`, `${prefix}dev_requirements.txt`]) {
+    const requirements = safeReadFile(reqFile, basePath);
+    if (requirements) {
+      result.type = result.type || 'requirements';
+      const deps = requirements.split('\n')
+        .filter(l => l.trim() && !l.startsWith('#') && !l.startsWith('-'))
+        .map(l => l.split(/[<>=~!\[]/)[0].trim())
+        .filter(d => d);
+      result.dependencies.push(...deps);
+    }
+  }
+
+  // Try Pipfile
+  const pipfile = safeReadFile(`${prefix}Pipfile`, basePath);
+  if (pipfile) {
+    result.type = result.type || 'pipfile';
+    // Simple extraction of package names from [packages] and [dev-packages]
+    const packagesMatch = pipfile.match(/\[packages\]([\s\S]*?)(?:\n\[|$)/);
+    if (packagesMatch) {
+      const lines = packagesMatch[1].split('\n');
+      for (const line of lines) {
+        const match = line.match(/^([a-z0-9_-]+)\s*=/i);
+        if (match) result.dependencies.push(match[1]);
+      }
+    }
+  }
+
+  // Deduplicate
+  result.dependencies = [...new Set(result.dependencies)];
+  return result.type ? result : null;
+}
+
+/**
+ * Detect Python frameworks from parsed project
+ */
+function detectPythonFrameworks(result, basePath) {
+  const pythonFrameworkMap = {
+    django: 'Django',
+    flask: 'Flask',
+    fastapi: 'FastAPI',
+    starlette: 'Starlette',
+    pytest: 'Pytest',
+    unittest: 'Unittest',
+    pandas: 'Pandas',
+    numpy: 'NumPy',
+    sqlalchemy: 'SQLAlchemy',
+    pydantic: 'Pydantic',
+    celery: 'Celery',
+    aiohttp: 'aiohttp',
+    httpx: 'HTTPX',
+    maturin: 'Maturin (Rust+Python)'
+  };
+
+  // Check root and python/ subdirectory
+  const pythonDirs = ['', 'python'];
+  for (const dir of pythonDirs) {
+    const pyInfo = parsePythonProject(basePath, dir);
+    if (pyInfo) {
+      for (const [dep, name] of Object.entries(pythonFrameworkMap)) {
+        if (pyInfo.dependencies.includes(dep) && !result.frameworks.includes(name)) {
+          result.frameworks.push(name);
+        }
+      }
+      // Set test framework if pytest found
+      if (pyInfo.dependencies.includes('pytest') && !result.testFramework) {
+        result.testFramework = 'pytest';
+        result.health.hasTests = true;
+      }
+    }
+  }
+}
+
+/**
+ * Parse Java build files for dependencies
+ * @param {string} basePath - Project root
+ * @param {string} subDir - Subdirectory (e.g., 'java/')
+ * @returns {Object|null} Parsed Java info
+ */
+function parseJavaProject(basePath, subDir = '') {
+  const prefix = subDir ? `${subDir}/` : '';
+  const result = { dependencies: [], plugins: [], type: null };
+
+  // Try build.gradle first
+  const gradle = safeReadFile(`${prefix}build.gradle`, basePath);
+  if (gradle) {
+    result.type = 'gradle';
+
+    // Extract plugins
+    const pluginMatches = gradle.match(/id\s+['"]([^'"]+)['"]/g) || [];
+    result.plugins.push(...pluginMatches.map(m => m.match(/['"]([^'"]+)['"]/)[1]));
+
+    // Extract dependencies (implementation, testImplementation, etc.)
+    const depMatches = gradle.match(/(?:implementation|testImplementation|api)\s+['"]([^'"]+)['"]/g) || [];
+    result.dependencies.push(...depMatches.map(m => {
+      const match = m.match(/['"]([^'"]+)['"]/);
+      return match ? match[1].split(':')[1] || match[1] : null;
+    }).filter(Boolean));
+  }
+
+  // Try pom.xml
+  const pom = safeReadFile(`${prefix}pom.xml`, basePath);
+  if (pom) {
+    result.type = result.type || 'maven';
+
+    // Extract artifactIds
+    const artifactMatches = pom.match(/<artifactId>([^<]+)<\/artifactId>/g) || [];
+    result.dependencies.push(...artifactMatches.map(m => m.replace(/<\/?artifactId>/g, '')));
+  }
+
+  return result.type ? result : null;
+}
+
+/**
+ * Detect Java frameworks from parsed project
+ */
+function detectJavaFrameworks(result, basePath) {
+  const javaFrameworkMap = {
+    'spring-boot': 'Spring Boot',
+    'spring-web': 'Spring MVC',
+    'spring-core': 'Spring',
+    'hibernate-core': 'Hibernate',
+    lombok: 'Lombok',
+    junit: 'JUnit',
+    'junit-jupiter': 'JUnit 5',
+    mockito: 'Mockito',
+    jacoco: 'JaCoCo',
+    spotless: 'Spotless',
+    netty: 'Netty',
+    'protobuf-java': 'Protobuf',
+    'grpc-stub': 'gRPC',
+    'io.freefair.lombok': 'Lombok'
+  };
+
+  // Check root and java/ subdirectory
+  const javaDirs = ['', 'java'];
+  for (const dir of javaDirs) {
+    const javaInfo = parseJavaProject(basePath, dir);
+    if (javaInfo) {
+      const allDeps = [...javaInfo.dependencies, ...javaInfo.plugins];
+      for (const [dep, name] of Object.entries(javaFrameworkMap)) {
+        if (allDeps.some(d => d.includes(dep)) && !result.frameworks.includes(name)) {
+          result.frameworks.push(name);
+        }
+      }
+      // Set test framework if JUnit found
+      if (allDeps.some(d => d.includes('junit')) && !result.testFramework) {
+        result.testFramework = 'junit';
+        result.health.hasTests = true;
+      }
+    }
+  }
+}
+
+/**
+ * Parse Go go.mod for dependencies
+ * @param {string} basePath - Project root
+ * @param {string} subDir - Subdirectory (e.g., 'go/')
+ * @returns {Object|null} Parsed Go info
+ */
+function parseGoMod(basePath, subDir = '') {
+  const prefix = subDir ? `${subDir}/` : '';
+  const content = safeReadFile(`${prefix}go.mod`, basePath);
+  if (!content) return null;
+
+  const result = { dependencies: [], goVersion: null };
+
+  // Extract Go version
+  const versionMatch = content.match(/^go\s+(\d+\.\d+)/m);
+  if (versionMatch) result.goVersion = versionMatch[1];
+
+  // Extract require dependencies
+  const lines = content.split('\n');
+  for (const line of lines) {
+    const match = line.match(/^\s+([^\s]+)\s+v/);
+    if (match) result.dependencies.push(match[1]);
+  }
+
+  return result;
+}
+
+/**
+ * Detect Go frameworks from parsed project
+ */
+function detectGoFrameworks(result, basePath) {
+  const goFrameworkMap = {
+    'github.com/gin-gonic/gin': 'Gin',
+    'github.com/labstack/echo': 'Echo',
+    'github.com/gofiber/fiber': 'Fiber',
+    'github.com/gorilla/mux': 'Gorilla Mux',
+    'github.com/go-chi/chi': 'Chi',
+    'gorm.io/gorm': 'GORM',
+    'github.com/jmoiron/sqlx': 'sqlx',
+    'github.com/stretchr/testify': 'Testify',
+    'google.golang.org/grpc': 'gRPC',
+    'google.golang.org/protobuf': 'Protobuf'
+  };
+
+  // Check root and go/ subdirectory
+  const goDirs = ['', 'go'];
+  for (const dir of goDirs) {
+    const goInfo = parseGoMod(basePath, dir);
+    if (goInfo) {
+      for (const [dep, name] of Object.entries(goFrameworkMap)) {
+        if (goInfo.dependencies.includes(dep) && !result.frameworks.includes(name)) {
+          result.frameworks.push(name);
+        }
+      }
+      // Set test framework if testify found
+      if (goInfo.dependencies.includes('github.com/stretchr/testify') && !result.testFramework) {
+        result.testFramework = 'testify';
+        result.health.hasTests = true;
+      }
+    }
+  }
+}
+
+/**
+ * Detect project type(s) based on build files
+ * @param {string} basePath - Project root
+ * @returns {Object} Project type info
+ */
+function detectProjectType(basePath) {
+  const types = [];
+
+  // Check for each language's build files
+  if (fs.existsSync(path.join(basePath, 'Cargo.toml'))) types.push('rust');
+  if (fs.existsSync(path.join(basePath, 'go.mod'))) types.push('go');
+  if (fs.existsSync(path.join(basePath, 'package.json'))) types.push('node');
+  if (fs.existsSync(path.join(basePath, 'pom.xml')) ||
+      fs.existsSync(path.join(basePath, 'build.gradle')) ||
+      fs.existsSync(path.join(basePath, 'build.gradle.kts'))) types.push('java');
+  if (fs.existsSync(path.join(basePath, 'pyproject.toml')) ||
+      fs.existsSync(path.join(basePath, 'setup.py')) ||
+      fs.existsSync(path.join(basePath, 'requirements.txt')) ||
+      fs.existsSync(path.join(basePath, 'Pipfile'))) types.push('python');
+
+  // Check subdirectories for multi-language projects (like valkey-glide)
+  const subDirs = ['go', 'java', 'python', 'node', 'rust'];
+  for (const dir of subDirs) {
+    const subPath = path.join(basePath, dir);
+    if (fs.existsSync(subPath) && fs.statSync(subPath).isDirectory()) {
+      // Check for language-specific files in subdirectory
+      if (dir === 'go' && fs.existsSync(path.join(subPath, 'go.mod')) && !types.includes('go')) {
+        types.push('go');
+      }
+      if (dir === 'java' && (fs.existsSync(path.join(subPath, 'build.gradle')) ||
+          fs.existsSync(path.join(subPath, 'pom.xml'))) && !types.includes('java')) {
+        types.push('java');
+      }
+      if (dir === 'python' && (fs.existsSync(path.join(subPath, 'Pipfile')) ||
+          fs.existsSync(path.join(subPath, 'pyproject.toml'))) && !types.includes('python')) {
+        types.push('python');
+      }
+      if (dir === 'node' && fs.existsSync(path.join(subPath, 'package.json')) && !types.includes('node')) {
+        types.push('node');
+      }
+    }
+  }
+
+  // Also check glide-core pattern (Rust in subdirectory)
+  const rustDirs = ['glide-core', 'core', 'crates'];
+  for (const dir of rustDirs) {
+    if (fs.existsSync(path.join(basePath, dir, 'Cargo.toml')) && !types.includes('rust')) {
+      types.push('rust');
+    }
+  }
+
+  return {
+    primary: types[0] || 'unknown',
+    all: types,
+    isMultiLang: types.length > 1
+  };
 }
 
 /**
@@ -167,7 +532,7 @@ function scanGitHubState(options = {}) {
     // Summarize issues - keep number, title, labels, snippet
     result.issues = issues.map(summarizeIssue);
     result.summary.issueCount = issues.length;
-    categorizeIssues(result, issues);
+    categorizeIssues(result, issues, opts);
     findStaleItems(result, issues, 90);
     extractThemes(result, issues);
   }
@@ -202,13 +567,49 @@ function scanGitHubState(options = {}) {
 }
 
 /**
+ * Detect severity from issue labels
+ */
+function detectSeverityFromLabels(labels) {
+  const labelStr = labels.map(l => (l.name || l).toLowerCase()).join(' ');
+  if (/critical|p0|urgent|blocker|severity[:\s-]*critical/i.test(labelStr)) return 'critical';
+  if (/high|p1|important|severity[:\s-]*high/i.test(labelStr)) return 'high';
+  if (/medium|p2|severity[:\s-]*medium/i.test(labelStr)) return 'medium';
+  if (/low|p3|minor|severity[:\s-]*low/i.test(labelStr)) return 'low';
+  return 'medium'; // Default
+}
+
+/**
+ * Calculate priority score for an issue (opt-in via options.calculatePriority)
+ * Based on prioritization.md reference
+ */
+function calculateIssuePriority(issue, category) {
+  const severityScores = { critical: 15, high: 10, medium: 5, low: 2 };
+  const categoryWeights = { security: 2.0, bugs: 1.5, enhancements: 1.0, features: 1.0, other: 0.8 };
+
+  const severity = detectSeverityFromLabels(issue.labels || []);
+  let score = severityScores[severity] || 5;
+  score *= categoryWeights[category] || 1.0;
+
+  // Staleness factor
+  const daysOld = Math.floor((Date.now() - new Date(issue.createdAt)) / (1000 * 60 * 60 * 24));
+  if (daysOld > 180) score *= 0.9;
+  if (daysOld < 7) score *= 1.2; // Recency boost
+
+  return {
+    score: Math.round(score),
+    severity,
+    bucket: score >= 15 ? 'immediate' : score >= 10 ? 'short-term' : score >= 5 ? 'medium-term' : 'backlog'
+  };
+}
+
+/**
  * Categorize issues by labels
  *
  * Uses regexes that treat non-letter characters (start/end of string, space, hyphen, colon, etc.)
  * as boundaries to avoid common false positives (e.g., "debug" won't match "bug", but "bug-fix" will).
  * Stores issue number + title (enough to understand without lookup).
  */
-function categorizeIssues(result, issues) {
+function categorizeIssues(result, issues, opts = {}) {
   const labelMap = {
     bug: 'bugs',
     'type: bug': 'bugs',
@@ -228,21 +629,24 @@ function categorizeIssues(result, issues) {
 
   for (const issue of issues) {
     const labels = (issue.labels || []).map(l => (l.name || l).toLowerCase());
-    let categorized = false;
+    let matchedCategory = 'other';
+
     // Store number + title for context
     const ref = { number: issue.number, title: issue.title };
 
     for (const { regex, category } of labelPatterns) {
       if (labels.some(l => regex.test(l))) {
-        result.categorized[category].push(ref);
-        categorized = true;
+        matchedCategory = category;
         break;
       }
     }
 
-    if (!categorized) {
-      result.categorized.other.push(ref);
+    // Add priority if opt-in
+    if (opts.calculatePriority) {
+      ref.priority = calculateIssuePriority(issue, matchedCategory);
     }
+
+    result.categorized[matchedCategory].push(ref);
   }
 }
 
@@ -311,61 +715,118 @@ function analyzeDocumentation(options = {}) {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   const basePath = opts.cwd;
 
-  const result = {
-    summary: { fileCount: 0, totalWords: 0 },
-    files: {},
-    features: [],
-    plans: [],
-    checkboxes: { total: 0, checked: 0, unchecked: 0 },
-    gaps: []
-  };
+    const result = {
+      summary: { fileCount: 0, totalWords: 0 },
+      files: {},
+      features: [],
+      featureDetails: [],
+      plans: [],
+      checkboxes: { total: 0, checked: 0, unchecked: 0 },
+      gaps: []
+    };
 
   // Standard documentation files to analyze
-  const docFiles = [
-    'README.md',
-    'PLAN.md',
-    'CLAUDE.md',
-    'AGENTS.md',
-    'CONTRIBUTING.md',
-    'CHANGELOG.md',
-    'docs/README.md',
-    'docs/PLAN.md'
-  ];
+  const docFiles = DOC_FILES;
 
-  for (const file of docFiles) {
-    const content = safeReadFile(file, basePath);
-    if (content) {
-      const analysis = analyzeMarkdownFile(content, file);
-      result.files[file] = analysis;
+    const seenFiles = new Set();
+    const documents = [];
+
+    const addDoc = (filePath, content) => {
+      if (!content || seenFiles.has(filePath)) return;
+      seenFiles.add(filePath);
+      documents.push({ path: filePath, content });
+      const analysis = analyzeMarkdownFile(content, filePath);
+      result.files[filePath] = analysis;
       result.summary.totalWords += analysis.wordCount;
       extractCheckboxes(result, content);
-      extractFeatures(result, content);
       extractPlans(result, content);
-    }
-  }
 
-  // Find additional markdown files if depth is thorough (limit to 5)
-  if (opts.depth === 'thorough') {
-    const docsDir = path.join(basePath, 'docs');
-    if (fs.existsSync(docsDir)) {
-      try {
-        const additionalFiles = fs.readdirSync(docsDir)
-          .filter(f => f.endsWith('.md') && !docFiles.includes(`docs/${f}`));
-
-        for (const file of additionalFiles.slice(0, 5)) {
-          const filePath = `docs/${file}`;
-          const content = safeReadFile(filePath, basePath);
-          if (content) {
-            const analysis = analyzeMarkdownFile(content, filePath);
-            result.files[filePath] = analysis;
-            result.summary.totalWords += analysis.wordCount;
-          }
+      const pointer = resolveDocPointer(content);
+      if (pointer && !seenFiles.has(pointer)) {
+        const linkedContent = safeReadFile(pointer, basePath);
+        if (linkedContent) {
+          addDoc(pointer, linkedContent);
         }
-      } catch {
-        // Ignore directory read errors
+      }
+    };
+
+    for (const file of docFiles) {
+      const content = safeReadFile(file, basePath);
+      if (content) {
+        addDoc(file, content);
       }
     }
-  }
+
+    const extraLimits = opts.depth === 'thorough'
+      ? { docs: 20, plans: 30, checklists: 20 }
+      : { docs: 8, plans: 8, checklists: 8 };
+
+    const extraDirs = [
+      { dir: 'docs', limit: extraLimits.docs },
+      { dir: 'examples', limit: extraLimits.docs },
+      { dir: 'extensions', limit: extraLimits.docs },
+      { dir: 'plans', limit: extraLimits.plans },
+      { dir: 'checklists', limit: extraLimits.checklists }
+    ];
+
+    for (const entry of extraDirs) {
+      let dirsToScan = [entry.dir];
+      if (entry.dir === 'docs') {
+        const docsEn = path.join(basePath, 'docs', 'en');
+        const docsMarkdown = path.join(basePath, 'docs', 'markdown');
+        if (fs.existsSync(docsEn)) {
+          dirsToScan = ['docs/en'];
+          if (fs.existsSync(docsMarkdown)) {
+            dirsToScan.push('docs/markdown');
+          }
+        }
+      }
+      const items = dirsToScan.flatMap((dir) => listMarkdownFiles(basePath, dir, entry.limit));
+      for (const filePath of items) {
+        if (docFiles.includes(filePath)) continue;
+        const content = safeReadFile(filePath, basePath);
+        if (content) {
+          addDoc(filePath, content);
+        }
+      }
+    }
+
+    const subprojectLimit = opts.depth === 'thorough' ? 8 : 3;
+    const subprojectReadmes = listSubprojectReadmes(basePath, subprojectLimit);
+    for (const filePath of subprojectReadmes) {
+      if (docFiles.includes(filePath)) continue;
+      if (seenFiles.has(filePath)) continue;
+      const content = safeReadFile(filePath, basePath);
+      if (content) {
+        addDoc(filePath, content);
+      }
+    }
+
+    const featureCandidates = findFeatureDocCandidates(basePath, 6);
+    for (const filePath of featureCandidates) {
+      if (docFiles.includes(filePath)) continue;
+      if (seenFiles.has(filePath)) continue;
+      const content = safeReadFile(filePath, basePath);
+      if (content) {
+        addDoc(filePath, content);
+      }
+    }
+
+    const featureDocs = documents.filter(doc => !shouldSkipFeatureDoc(doc.path) && !shouldSkipFeatureDocPath(doc.path));
+    const featureData = featureExtractor.extractFeaturesFromDocs(featureDocs, opts.docFeatures);
+    result.features = featureData.features || [];
+    result.featureDetails = featureData.details || [];
+
+    const cargoFeatures = extractCargoFeatures(basePath, 40);
+    if (cargoFeatures.length > 0) {
+      const seen = new Set(result.featureDetails.map(item => item.normalized));
+      for (const feature of cargoFeatures) {
+        if (seen.has(feature.normalized)) continue;
+        seen.add(feature.normalized);
+        result.featureDetails.push(feature);
+        result.features.push(feature.name);
+      }
+    }
 
   result.summary.fileCount = Object.keys(result.files).length;
 
@@ -373,6 +834,16 @@ function analyzeDocumentation(options = {}) {
   identifyDocGaps(result);
 
   return result;
+}
+
+function resolveDocPointer(content) {
+  const trimmed = String(content || '').trim();
+  if (!trimmed) return null;
+  if (trimmed.includes('\n')) return null;
+  if (/\s/.test(trimmed)) return null;
+  if (/^https?:\/\//i.test(trimmed)) return null;
+  if (!DOC_POINTER_EXT.test(trimmed)) return null;
+  return trimmed.replace(/^\.\//, '');
 }
 
 /**
@@ -401,39 +872,36 @@ function analyzeMarkdownFile(content, filePath) {
 
 /**
  * Extract checkboxes from content
+ * Supports: - [x], * [x], + [x], 1. [x], and indented versions
  */
 function extractCheckboxes(result, content) {
-  const checked = (content.match(/^[-*]\s+\[x\]/gim) || []).length;
-  const unchecked = (content.match(/^[-*]\s+\[\s\]/gim) || []).length;
+  // Match all checkbox formats
+  const checkedPattern = /^[\s]*(?:[-*+]|\d+\.)\s*\[x\]/gim;
+  const uncheckedPattern = /^[\s]*(?:[-*+]|\d+\.)\s*\[\s\]/gim;
+
+  const checked = (content.match(checkedPattern) || []).length;
+  const unchecked = (content.match(uncheckedPattern) || []).length;
 
   result.checkboxes.checked += checked;
   result.checkboxes.unchecked += unchecked;
   result.checkboxes.total += checked + unchecked;
-}
 
-/**
- * Extract documented features (limited to top 20)
- */
-function extractFeatures(result, content) {
-  // Look for feature lists
-  const featurePattern = /^[-*]\s+\*{0,2}(.+?)\*{0,2}(?:\s*[-–]\s*(.+))?$/gm;
+  // Extract checkbox text for cross-referencing
+  if (!result.checkboxes.items) result.checkboxes.items = [];
+  const itemPattern = /^[\s]*(?:[-*+]|\d+\.)\s*\[(x|\s)\]\s*(.+)$/gim;
   let match;
-
-  while ((match = featurePattern.exec(content)) !== null && result.features.length < 20) {
-    const feature = match[1].trim();
-    if (feature.length > 5 && feature.length < 80) {
-      result.features.push(feature);
-    }
+  while ((match = itemPattern.exec(content)) !== null && result.checkboxes.items.length < 100) {
+    result.checkboxes.items.push({
+      checked: match[1].toLowerCase() === 'x',
+      text: match[2].trim().slice(0, 150)  // Truncate long items
+    });
   }
-
-  // Deduplicate and limit
-  result.features = [...new Set(result.features)].slice(0, 20);
 }
 
-/**
- * Extract planned items from content (limited to top 15)
- */
-function extractPlans(result, content) {
+  /**
+   * Extract planned items from content (limited to top 15)
+   */
+  function extractPlans(result, content) {
   // Look for TODO, FIXME, future plans sections
   const planPatterns = [
     /(?:TODO|FIXME|PLAN):\s*(.+)/gi,
@@ -482,14 +950,19 @@ function scanCodebase(options = {}) {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   const basePath = opts.cwd;
 
+  // Detect project type first
+  const projectType = detectProjectType(basePath);
+
   const result = {
     summary: { totalDirs: 0, totalFiles: 0 },
+    projectType: projectType,
     topLevelDirs: [],
     frameworks: [],
     testFramework: null,
     hasTypeScript: false,
     implementedFeatures: [],
     symbols: {}, // Function/class/export names per file
+    repoMap: { available: false },
     health: {
       hasTests: false,
       hasLinting: false,
@@ -502,7 +975,7 @@ function scanCodebase(options = {}) {
   // Internal structure for scanning (not exposed in full)
   const internalStructure = {};
 
-  // Detect package.json dependencies
+  // Detect package.json dependencies (Node.js)
   const pkgContent = safeReadFile('package.json', basePath);
   if (pkgContent) {
     try {
@@ -512,6 +985,26 @@ function scanCodebase(options = {}) {
     } catch {
       // Invalid JSON
     }
+  }
+
+  // Detect Rust frameworks if project includes Rust
+  if (projectType.all.includes('rust')) {
+    detectRustFrameworks(result, basePath);
+  }
+
+  // Detect Python frameworks if project includes Python
+  if (projectType.all.includes('python')) {
+    detectPythonFrameworks(result, basePath);
+  }
+
+  // Detect Go frameworks if project includes Go
+  if (projectType.all.includes('go')) {
+    detectGoFrameworks(result, basePath);
+  }
+
+  // Detect Java frameworks if project includes Java
+  if (projectType.all.includes('java')) {
+    detectJavaFrameworks(result, basePath);
   }
 
   // Check for TypeScript
@@ -531,11 +1024,21 @@ function scanCodebase(options = {}) {
   }
 
   // Detect health indicators
-  detectHealth(result, basePath);
+  detectHealth(result, basePath, projectType);
+
+  const repoMapSummary = getRepoMapSummary(opts, basePath);
+  if (repoMapSummary) {
+    result.repoMap = repoMapSummary;
+  }
 
   // Find implemented features from code
   if (opts.depth === 'thorough') {
     findImplementedFeatures({ ...result, structure: internalStructure }, basePath);
+  }
+
+  if (result.repoMap && result.repoMap.available) {
+    result.symbols = result.repoMap.symbols || {};
+  } else if (opts.depth === 'thorough') {
     // Extract symbols from source files
     result.symbols = scanFileSymbols(basePath, result.topLevelDirs);
   }
@@ -549,8 +1052,98 @@ function scanCodebase(options = {}) {
   return result;
 }
 
+function getRepoMapSummary(options, basePath) {
+  try {
+    const repoMapOptions = options.repoMap || {};
+    const depth = options.depth || 'thorough';
+    const maxFiles = repoMapOptions.maxFiles || (depth === 'thorough' ? 40 : 15);
+    const maxSymbolsPerType = repoMapOptions.maxSymbolsPerType || (depth === 'thorough' ? 20 : 8);
+
+    return repoMap.summarizeForDrift(basePath, {
+      maxFiles,
+      maxSymbolsPerType,
+      maxDependenciesPerFile: repoMapOptions.maxDependenciesPerFile || 10,
+      includeStaleness: true
+    });
+  } catch {
+    return { available: false };
+  }
+}
+
+function getRepoMapSummaryFallback(basePath) {
+  try {
+    const repoMap = getRepoMap();
+    const map = repoMap.cache?.load?.(basePath);
+    if (!map) return null;
+    return {
+      available: true,
+      summary: {
+        generated: map.generated,
+        updated: map.updated,
+        commit: map.git?.commit,
+        branch: map.git?.branch,
+        files: Object.keys(map.files || {}).length,
+        symbols: map.stats?.totalSymbols || 0,
+        languages: summarizeRepoMapLanguages(map)
+      }
+    };
+  } catch {
+    return null;
+  }
+}
+
+function summarizeRepoMapLanguages(map) {
+  const extMap = new Map([
+    ['.ts', 'typescript'],
+    ['.tsx', 'typescript'],
+    ['.js', 'javascript'],
+    ['.jsx', 'javascript'],
+    ['.mts', 'typescript'],
+    ['.cts', 'typescript'],
+    ['.mjs', 'javascript'],
+    ['.cjs', 'javascript'],
+    ['.rs', 'rust'],
+    ['.go', 'go'],
+    ['.py', 'python'],
+    ['.java', 'java']
+  ]);
+  const counts = new Map();
+  const nonTestCounts = new Map();
+  for (const file of Object.keys(map.files || {})) {
+    const ext = path.extname(file).toLowerCase();
+    const lang = extMap.get(ext);
+    if (!lang) continue;
+    counts.set(lang, (counts.get(lang) || 0) + 1);
+    if (!isTestPath(file)) {
+      nonTestCounts.set(lang, (nonTestCounts.get(lang) || 0) + 1);
+    }
+  }
+  const languages = [];
+  for (const [lang, total] of counts.entries()) {
+    const nonTest = nonTestCounts.get(lang) || 0;
+    if (nonTest === 0) continue;
+    const ratio = total > 0 ? (nonTest / total) : 0;
+    if (nonTest >= 5 || ratio >= 0.25) {
+      languages.push(lang);
+    }
+  }
+  if (languages.length === 0) return map.project?.languages || [];
+  return languages.sort();
+}
+
+function isTestPath(filePath) {
+  const lower = String(filePath || '').toLowerCase();
+  return lower.includes('/test/')
+    || lower.includes('/tests/')
+    || lower.includes('/__tests__/')
+    || lower.includes('/e2e/')
+    || lower.includes('_test.')
+    || lower.includes('.spec.')
+    || lower.includes('.test.');
+}
+
 /**
- * Detect frameworks from package.json
+ * Detect frameworks from package.json (Node.js)
  */
 function detectFrameworks(result, pkgJson) {
   const deps = { ...pkgJson.dependencies, ...pkgJson.devDependencies };
@@ -574,6 +1167,46 @@ function detectFrameworks(result, pkgJson) {
   }
 
   result.frameworks = [...new Set(result.frameworks)];
+}
+
+/**
+ * Detect Rust frameworks from Cargo.toml
+ */
+function detectRustFrameworks(result, basePath) {
+  // Try root Cargo.toml first, then common subdirs
+  const cargoPaths = ['Cargo.toml', 'glide-core/Cargo.toml', 'core/Cargo.toml', 'src/Cargo.toml'];
+
+  const rustFrameworkMap = {
+    ratatui: 'Ratatui (TUI)',
+    crossterm: 'Crossterm',
+    tokio: 'Tokio',
+    'async-std': 'async-std',
+    'actix-web': 'Actix Web',
+    'actix-rt': 'Actix',
+    axum: 'Axum',
+    rocket: 'Rocket',
+    warp: 'Warp',
+    hyper: 'Hyper',
+    serde: 'Serde',
+    sqlx: 'SQLx',
+    diesel: 'Diesel',
+    'sea-orm': 'SeaORM',
+    clap: 'Clap (CLI)',
+    tracing: 'Tracing',
+    log: 'Log'
+  };
+
+  for (const cargoPath of cargoPaths) {
+    const cargo = parseCargoToml(basePath, cargoPath);
+    if (cargo) {
+      const allDeps = [...cargo.dependencies, ...cargo.devDependencies];
+      for (const [dep, name] of Object.entries(rustFrameworkMap)) {
+        if (allDeps.includes(dep) && !result.frameworks.includes(name)) {
+          result.frameworks.push(name);
+        }
+      }
+    }
+  }
 }
 
 /**
@@ -759,12 +1392,12 @@ function scanDirectory(result, basePath, relativePath, maxDepth, depth = 0) {
 /**
  * Detect project health indicators
  */
-function detectHealth(result, basePath) {
+function detectHealth(result, basePath, projectType) {
   // Check for README
   result.health.hasReadme = fs.existsSync(path.join(basePath, 'README.md'));
 
   // Check for linting config
-  const lintConfigs = ['.eslintrc', '.eslintrc.js', '.eslintrc.json', 'eslint.config.js', 'biome.json'];
+  const lintConfigs = ['.eslintrc', '.eslintrc.js', '.eslintrc.json', 'eslint.config.js', 'biome.json', 'clippy.toml'];
   result.health.hasLinting = lintConfigs.some(f => fs.existsSync(path.join(basePath, f)));
 
   // Check for CI config
@@ -780,6 +1413,43 @@ function detectHealth(result, basePath) {
   // Check for tests directory
   const testDirs = ['tests', '__tests__', 'test', 'spec'];
   result.health.hasTests = result.health.hasTests || testDirs.some(d => fs.existsSync(path.join(basePath, d)));
+
+  // Check for Rust tests (inline or test directories)
+  if (projectType && projectType.all.includes('rust')) {
+    // Check for test directories in Rust subdirectories
+    const rustTestDirs = ['tests', 'glide-core/tests', 'core/tests', 'src/tests'];
+    for (const dir of rustTestDirs) {
+      if (fs.existsSync(path.join(basePath, dir))) {
+        result.health.hasTests = true;
+        if (!result.testFramework) result.testFramework = 'rust-builtin';
+        break;
+      }
+    }
+
+    // Also check for inline tests in src files
+    if (!result.health.hasTests) {
+      const rustSrcDirs = ['src', 'glide-core/src', 'core/src'];
+      for (const dir of rustSrcDirs) {
+        const srcPath = path.join(basePath, dir);
+        if (fs.existsSync(srcPath)) {
+          try {
+            const files = fs.readdirSync(srcPath).filter(f => f.endsWith('.rs')).slice(0, 5);
+            for (const file of files) {
+              const content = safeReadFile(path.join(dir, file), basePath);
+              if (content && (content.includes('#[test]') || content.includes('#[cfg(test)]'))) {
+                result.health.hasTests = true;
+                if (!result.testFramework) result.testFramework = 'rust-builtin';
+                break;
+              }
+            }
+          } catch {
+            // Ignore read errors
+          }
+          if (result.health.hasTests) break;
+        }
+      }
+    }
+  }
 }
 
 /**
@@ -845,7 +1515,263 @@ function collectAllData(options = {}) {
     data.code = scanCodebase(opts);
   }
 
+  if (data.code && data.docs) {
+    const featuresSource = Array.isArray(data.docs.featureDetails) && data.docs.featureDetails.length > 0
+      ? data.docs.featureDetails
+      : data.docs.features || [];
+
+    const featureEvidence = getRepoMap().findFeatureEvidence(opts.cwd, featuresSource, {
+      maxFeatures: opts.repoMap?.maxFeatures,
+      maxDefsPerFeature: opts.repoMap?.maxDefsPerFeature,
+      maxRefsPerFeature: opts.repoMap?.maxRefsPerFeature,
+      maxFilesScannedPerDef: opts.repoMap?.maxFilesScannedPerDef,
+      snippetLines: opts.repoMap?.snippetLines
+    });
+
+    if (!data.code.repoMap) {
+      data.code.repoMap = { available: false };
+    }
+
+    data.code.repoMap.featureEvidence = featureEvidence;
+
+    if (featureEvidence?.available && !data.code.repoMap.available) {
+      const refreshed = getRepoMapSummary(opts, opts.cwd);
+      if (refreshed && refreshed.available) {
+        data.code.repoMap = { ...data.code.repoMap, ...refreshed };
+      } else {
+        data.code.repoMap.available = true;
+      }
+    }
+  }
+
+  if (data.code && data.docs && opts.depth === 'thorough') {
+    const evidenceTerms = extractRepoMapTerms(data.docs);
+    const evidence = getRepoMap().findEvidence(opts.cwd, evidenceTerms, {
+      maxTerms: opts.repoMap?.maxTerms,
+      maxMatchesPerTerm: opts.repoMap?.maxMatchesPerTerm,
+      maxSymbolsPerType: opts.repoMap?.maxSymbolsPerType,
+      maxSymbolsPerMatch: opts.repoMap?.maxSymbolsPerMatch
+    });
+
+    if (!data.code.repoMap) {
+      data.code.repoMap = { available: false };
+    }
+
+    data.code.repoMap.evidence = evidence;
+  }
+
+  if (data.code?.repoMap?.available && !data.code.repoMap.summary) {
+    const refreshed = getRepoMapSummary(opts, opts.cwd);
+    if (refreshed && refreshed.available && refreshed.summary) {
+      data.code.repoMap = { ...data.code.repoMap, ...refreshed };
+    } else {
+      const fallback = getRepoMapSummaryFallback(opts.cwd);
+      if (fallback && fallback.summary) {
+        data.code.repoMap = { ...data.code.repoMap, ...fallback };
+      }
+    }
+  }
+
   return data;
+}
+
+function extractRepoMapTerms(docs) {
+  const terms = [];
+  if (!docs) return terms;
+
+  if (Array.isArray(docs.features)) {
+    terms.push(...docs.features);
+  }
+
+  if (Array.isArray(docs.featureDetails)) {
+    for (const feature of docs.featureDetails) {
+      if (feature && feature.normalized) {
+        terms.push(feature.normalized);
+      }
+    }
+  }
+
+  if (Array.isArray(docs.plans)) {
+    terms.push(...docs.plans);
+  }
+
+  const checkboxItems = docs.checkboxes?.items;
+  if (Array.isArray(checkboxItems)) {
+    for (const item of checkboxItems) {
+      if (item && item.text) {
+        terms.push(item.text);
+      }
+    }
+  }
+
+  return terms;
+}
+
+function listMarkdownFiles(basePath, relativeDir, limit) {
+  const results = [];
+  const root = path.join(basePath, relativeDir);
+  if (!fs.existsSync(root)) return results;
+
+  const walk = (dir) => {
+    if (results.length >= limit) return;
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (results.length >= limit) break;
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name.startsWith('.')) continue;
+        walk(fullPath);
+      } else if (entry.isFile() && (entry.name.endsWith('.md') || entry.name.endsWith('.mdx') || entry.name.endsWith('.rst') || entry.name.endsWith('.adoc') || entry.name.endsWith('.asciidoc'))) {
+        const relPath = path.relative(basePath, fullPath).replace(/\\/g, '/');
+        results.push(relPath);
+      }
+    }
+  };
+
+  walk(root);
+  return results.slice(0, limit);
+}
+
+function extractCargoFeatures(basePath, limit) {
+  const files = listCargoFiles(basePath, 6);
+  const results = [];
+  for (const filePath of files) {
+    let content;
+    try {
+      content = fs.readFileSync(path.join(basePath, filePath), 'utf8');
+    } catch {
+      continue;
+    }
+    const lines = content.split(/\r?\n/);
+    let inFeatures = false;
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      if (trimmed.startsWith('[')) {
+        inFeatures = trimmed.toLowerCase() === '[features]';
+        continue;
+      }
+      if (!inFeatures) continue;
+      const match = trimmed.match(/^([A-Za-z0-9_.-]+)\s*=/);
+      if (!match) continue;
+      const name = match[1];
+      if (name.toLowerCase() === 'default') continue;
+      const normalized = featureExtractor.normalizeText(name);
+      const tokens = featureExtractor.tokenize(normalized);
+      if (!tokens.length) continue;
+      results.push({
+        name,
+        normalized,
+        tokens,
+        sourceFile: filePath,
+        sourceType: 'cargo',
+        sourceLine: i + 1,
+        context: line.trim().slice(0, 200)
+      });
+      if (results.length >= limit) return results;
+    }
+  }
+  return results;
+}
+
+function listCargoFiles(basePath, limit) {
+  const results = [];
+  const root = basePath;
+  const walk = (dir) => {
+    if (results.length >= limit) return;
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (results.length >= limit) break;
+      const fullPath = path.join(dir, entry.name);
+      const relativePath = path.relative(basePath, fullPath).replace(/\\/g, '/');
+      if (entry.isDirectory()) {
+        if (entry.name.startsWith('.')) continue;
+        const relLower = relativePath.toLowerCase();
+        if (relLower.includes('node_modules') || relLower.includes('/target/') || relLower.includes('/dist/') || relLower.includes('/build/')) continue;
+        walk(fullPath);
+      } else if (entry.isFile() && entry.name === 'Cargo.toml') {
+        results.push(relativePath);
+      }
+    }
+  };
+
+  walk(root);
+  return results.slice(0, limit);
+}
+
+function findFeatureDocCandidates(basePath, limit) {
+  const results = [];
+  const root = path.join(basePath, 'docs');
+  if (!fs.existsSync(root)) return results;
+
+  const targets = new Set(['features.md', 'feature.md']);
+  const walk = (dir) => {
+    if (results.length >= limit) return;
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (results.length >= limit) break;
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name.startsWith('.')) continue;
+        walk(fullPath);
+      } else if (entry.isFile() && targets.has(entry.name.toLowerCase())) {
+        const relPath = path.relative(basePath, fullPath).replace(/\\/g, '/');
+        results.push(relPath);
+      }
+    }
+  };
+
+  walk(root);
+  return results.slice(0, limit);
+}
+
+function listSubprojectReadmes(basePath, limit) {
+  const results = [];
+  if (!fs.existsSync(basePath)) return results;
+  let entries;
+  try {
+    entries = fs.readdirSync(basePath, { withFileTypes: true });
+  } catch {
+    return results;
+  }
+
+  const ignoreDirs = new Set([
+    '.git', '.github', '.claude', '.codex', '.opencode', '.vscode',
+    'node_modules', 'dist', 'build', 'out', 'coverage', 'tmp', 'temp',
+    'vendor', 'packages', 'examples', 'docs'
+  ]);
+
+  for (const entry of entries) {
+    if (results.length >= limit) break;
+    if (!entry.isDirectory()) continue;
+    if (entry.name.startsWith('.')) continue;
+    if (ignoreDirs.has(entry.name)) continue;
+    const readmePath = path.join(basePath, entry.name, 'README.md');
+    const readmeLower = path.join(basePath, entry.name, 'readme.md');
+    if (fs.existsSync(readmePath)) {
+      results.push(path.relative(basePath, readmePath).replace(/\\/g, '/'));
+    } else if (fs.existsSync(readmeLower)) {
+      results.push(path.relative(basePath, readmeLower).replace(/\\/g, '/'));
+    }
+  }
+
+  return results.slice(0, limit);
 }
 
 module.exports = {

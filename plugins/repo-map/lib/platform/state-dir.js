@@ -11,10 +11,19 @@ const fs = require('fs');
 const path = require('path');
 
 /**
- * Cached state directory name (relative, without leading dot handling)
- * @type {string|null}
+ * Cached state directory name (relative, without leading dot handling),
+ * scoped by resolved base path.
+ * @type {Map<string, string>}
  */
-let _cachedStateDir = null;
+const _cachedStateDirs = new Map();
+
+function isDirectory(targetPath) {
+  try {
+    return fs.statSync(targetPath).isDirectory();
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Detect which AI coding assistant is running and return appropriate state directory
@@ -34,23 +43,24 @@ function getStateDir(basePath = process.cwd()) {
     return process.env.AI_STATE_DIR;
   }
 
-  // Return cached value if available
-  if (_cachedStateDir) {
-    return _cachedStateDir;
+  const cacheKey = path.resolve(basePath);
+  const cached = _cachedStateDirs.get(cacheKey);
+  if (cached) {
+    return cached;
   }
 
   // OpenCode detection
   if (process.env.OPENCODE_CONFIG || process.env.OPENCODE_CONFIG_DIR) {
-    _cachedStateDir = '.opencode';
-    return _cachedStateDir;
+    _cachedStateDirs.set(cacheKey, '.opencode');
+    return '.opencode';
   }
 
   // Check for .opencode directory in project
   try {
     const opencodePath = path.join(basePath, '.opencode');
-    if (fs.existsSync(opencodePath) && fs.statSync(opencodePath).isDirectory()) {
-      _cachedStateDir = '.opencode';
-      return _cachedStateDir;
+    if (isDirectory(opencodePath)) {
+      _cachedStateDirs.set(cacheKey, '.opencode');
+      return '.opencode';
     }
   } catch {
     // Ignore errors, continue detection
@@ -58,24 +68,24 @@ function getStateDir(basePath = process.cwd()) {
 
   // Codex detection
   if (process.env.CODEX_HOME) {
-    _cachedStateDir = '.codex';
-    return _cachedStateDir;
+    _cachedStateDirs.set(cacheKey, '.codex');
+    return '.codex';
   }
 
   // Check for .codex directory in project
   try {
     const codexPath = path.join(basePath, '.codex');
-    if (fs.existsSync(codexPath) && fs.statSync(codexPath).isDirectory()) {
-      _cachedStateDir = '.codex';
-      return _cachedStateDir;
+    if (isDirectory(codexPath)) {
+      _cachedStateDirs.set(cacheKey, '.codex');
+      return '.codex';
     }
   } catch {
     // Ignore errors, continue detection
   }
 
   // Default to Claude Code
-  _cachedStateDir = '.claude';
-  return _cachedStateDir;
+  _cachedStateDirs.set(cacheKey, '.claude');
+  return '.claude';
 }
 
 /**
@@ -111,7 +121,7 @@ function getPlatformName(basePath = process.cwd()) {
  * Clear the cached state directory (useful for testing)
  */
 function clearCache() {
-  _cachedStateDir = null;
+  _cachedStateDirs.clear();
 }
 
 module.exports = {

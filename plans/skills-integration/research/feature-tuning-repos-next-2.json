@@ -1,0 +1,12 @@
+[
+  {"name":"caddyserver/caddy","language":"Go"},
+  {"name":"prometheus/prometheus","language":"Go"},
+  {"name":"actix/actix-web","language":"Rust"},
+  {"name":"SeaQL/sea-orm","language":"Rust"},
+  {"name":"django/django","language":"Python"},
+  {"name":"psf/requests","language":"Python"},
+  {"name":"axios/axios","language":"JavaScript"},
+  {"name":"jestjs/jest","language":"TypeScript"},
+  {"name":"prisma/prisma","language":"TypeScript"},
+  {"name":"spring-projects/spring-boot","language":"Java"}
+]
