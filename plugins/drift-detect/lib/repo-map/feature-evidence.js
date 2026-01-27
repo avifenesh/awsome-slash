@@ -9,14 +9,12 @@
 const fs = require('fs');
 const path = require('path');
 const cache = require('./cache');
-
 const {
   STOPWORDS,
   GENERIC_TOKENS,
   GENERIC_SYMBOL_NAMES,
   PATH_TOKEN_WHITELIST,
-  TOKEN_ALIASES,
-  EXTENSIONS
+  TOKEN_ALIASES
 } = require('./feature-lexicon');
 
 const DEFAULT_OPTIONS = {
@@ -25,21 +23,15 @@ const DEFAULT_OPTIONS = {
   maxRefsPerFeature: 6,
   maxFilesScannedPerDef: 8,
   snippetLines: 2,
-  maxFallbackFiles: 6000
+  enablePathFallback: true,
+  maxPathScanFiles: 4000
 };
 
-const STRONG_PATH_HINTS = [
-  '/module/',
-  '/starter/',
-  '/starter-',
-  '/core/',
-  '/loader/',
-  '/configuration/',
-  '/autoconfigure/',
-  '/auto-configuration/',
-  '/actuator/',
-  '/metrics/',
-  '/security/'
+
+const EXTENSIONS = [
+  '.js', '.jsx', '.mjs', '.cjs',
+  '.ts', '.tsx', '.mts', '.cts',
+  '.py', '.rs', '.go', '.java'
 ];
 
 function findFeatureEvidence(basePath, features = [], options = {}) {
@@ -58,7 +50,6 @@ function findFeatureEvidence(basePath, features = [], options = {}) {
   const reverseDeps = buildReverseDependencies(map, fileSet);
   const referenceIndex = buildReferenceIndex(map);
   const symbolIndex = buildSymbolIndex(map);
-  let fallbackFileIndex = null;
 
   const results = [];
   const unmatched = [];
@@ -85,11 +76,8 @@ function findFeatureEvidence(basePath, features = [], options = {}) {
     const matches = matchFeatureToSymbols(feature, symbolIndex, opts.maxDefsPerFeature);
     if (matches.length === 0) {
       let fileMatches = matchFeatureToFiles(feature, map, opts.maxDefsPerFeature);
-      if (fileMatches.length === 0) {
-        if (!fallbackFileIndex) {
-          fallbackFileIndex = buildFilePathIndex(basePath, opts.maxFallbackFiles);
-        }
-        fileMatches = matchFeatureToFileList(feature, fallbackFileIndex, opts.maxDefsPerFeature);
+      if (fileMatches.length === 0 && opts.enablePathFallback) {
+        fileMatches = matchFeatureToDiskFiles(basePath, feature, opts);
       }
       if (fileMatches.length === 0) {
         unmatched.push(feature.original);
@@ -104,12 +92,11 @@ function findFeatureEvidence(basePath, features = [], options = {}) {
         });
         continue;
       }
-      const fileEvidence = evaluateFileEvidence(feature, fileMatches);
       results.push({
         feature: feature.original,
         normalized: feature.normalized,
         tokens: feature.tokens,
-        status: fileEvidence.implemented ? 'implemented' : 'partial',
+        status: 'partial',
         defs: fileMatches.map(entry => ({
           file: entry.file,
           name: entry.name,
@@ -252,12 +239,6 @@ function expandTokens(tokens) {
     if (!token) continue;
     const base = singularizeToken(token);
     addToken(base);
-    if (base.includes('/') || base.includes('-')) {
-      const parts = base.split(/[/-]+/).filter(part => part && part !== base);
-      for (const part of parts) {
-        addToken(part);
-      }
-    }
     const aliases = TOKEN_ALIASES[base] || TOKEN_ALIASES[token] || [];
     for (const alias of aliases) {
       addToken(alias);
@@ -278,16 +259,6 @@ function singularizeToken(token) {
   return value;
 }
 
-function isValidSymbolName(name) {
-  const value = String(name || '').trim();
-  if (!value) return false;
-  if (value.length > 120) return false;
-  if (/\s/.test(value)) return false;
-  if (/[(){}\[\];]/.test(value)) return false;
-  if (value.includes('=>')) return false;
-  return true;
-}
-
 function buildSymbolIndex(map) {
   const index = [];
   for (const [file, data] of Object.entries(map.files || {})) {
@@ -296,7 +267,6 @@ function buildSymbolIndex(map) {
       if (!Array.isArray(list)) continue;
       for (const entry of list) {
         if (!entry || !entry.name) continue;
-        if (!isValidSymbolName(entry.name)) continue;
         index.push({
           file,
           name: entry.name,
@@ -314,6 +284,7 @@ function matchFeatureToSymbols(feature, symbolIndex, limit) {
   const matches = [];
   for (const symbol of symbolIndex) {
     if (isGenericSymbolName(symbol.name) && (feature?.tokens || []).length >= 2) continue;
+    if (looksLikeTestSymbol(symbol.name)) continue;
     const score = featureMatchScore(feature, symbol.name, symbol.file);
     if (score <= 0) continue;
     matches.push({ ...symbol, score });
@@ -336,6 +307,7 @@ function featureMatchScore(feature, symbolName, filePath) {
   const onlyGeneric = feature?.hasNonGeneric === false;
   const nonGenericTokens = tokens.filter(token => !GENERIC_TOKENS.has(token));
   const nameLower = String(symbolName || '').toLowerCase();
+  const nameNormalized = normalizeSymbolName(symbolName);
   const fileLower = String(filePath || '').toLowerCase();
   let count = 0;
   let nameMatches = 0;
@@ -344,10 +316,24 @@ function featureMatchScore(feature, symbolName, filePath) {
 
   for (const token of tokens) {
     if (onlyGeneric) {
-      const wordMatch = new RegExp(`\\b${escapeRegExp(token)}\\b`, 'i').test(symbolName || '');
+      const wordMatch = new RegExp(`\\b${escapeRegExp(token)}\\b`, 'i').test(nameNormalized);
       if (wordMatch) {
         count += 2;
         nameMatches += 1;
+        matchedTokens.add(token);
+      }
+      continue;
+    }
+
+    if (token.length <= 4) {
+      const wordMatch = new RegExp(`\\b${escapeRegExp(token)}\\b`, 'i').test(nameNormalized);
+      if (wordMatch) {
+        count += 2;
+        nameMatches += 1;
+        matchedTokens.add(token);
+      } else if (fileLower.includes(token) && (token.length >= 5 || PATH_TOKEN_WHITELIST.has(token))) {
+        count += 1;
+        fileMatches += 1;
         matchedTokens.add(token);
       }
       continue;
@@ -376,15 +362,19 @@ function featureMatchScore(feature, symbolName, filePath) {
   if (matchCount < requiredMatches) return 0;
   if (nonGenericTokens.length > 0) {
     const nonGenericMatched = nonGenericTokens.filter(token => matchedTokens.has(token)).length;
-    if (nonGenericMatched === 0) {
-      if (nameMatches === 0) return 0;
-      if (tokens.length < 3) return 0;
-    }
+    if (nonGenericMatched === 0) return 0;
   }
   if (nameMatches === 0 && fileMatches === 0) return 0;
   if (onlyGeneric && nameMatches === 0) return 0;
   if (isTestFile(filePath)) count -= 1;
   return count > 0 ? count : 0;
+}
+
+function normalizeSymbolName(name) {
+  return String(name || '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_\\-]+/g, ' ')
+    .toLowerCase();
 }
 
 function isGenericSymbolName(name) {
@@ -396,10 +386,21 @@ function isGenericSymbolName(name) {
   return false;
 }
 
+function looksLikeTestSymbol(name) {
+  if (!name) return false;
+  const normalized = String(name).toLowerCase();
+  if (normalized.startsWith('test_') || normalized.startsWith('test')) return true;
+  if (normalized.includes('spec')) return true;
+  return false;
+}
+
 function isTestFile(filePath) {
   if (!filePath) return false;
   const lower = String(filePath).toLowerCase();
-  return lower.includes('_test.') || lower.includes('/test/') || lower.includes('/tests/') || lower.includes('__tests__');
+  if (lower.includes('_test.') || lower.includes('.spec.') || lower.includes('.test.')) return true;
+  if (lower.includes('/test/') || lower.includes('/tests/') || lower.includes('__tests__')) return true;
+  if (lower.includes('\\test\\') || lower.includes('\\tests\\') || lower.includes('__tests__')) return true;
+  return false;
 }
 
 function buildReverseDependencies(map, fileSet) {
@@ -469,35 +470,18 @@ function matchFeatureToFiles(feature, map, limit) {
   return matches.slice(0, limit);
 }
 
-function evaluateFileEvidence(feature, fileMatches) {
-  const matches = Array.isArray(fileMatches) ? fileMatches : [];
-  if (matches.length === 0) return { implemented: false };
-  const nonGeneric = (feature?.tokens || []).filter(token => !GENERIC_TOKENS.has(token));
-  const strongMatches = matches.filter(entry => isStrongPath(entry.file));
-
-  if (strongMatches.length >= 2) return { implemented: true };
-  if (strongMatches.length >= 1 && nonGeneric.length > 0) return { implemented: true };
-  if (matches.length >= 4 && nonGeneric.length > 0) return { implemented: true };
-  if (matches.length >= 6 && nonGeneric.length === 0) return { implemented: true };
-
-  return { implemented: false };
-}
-
-function isStrongPath(filePath) {
-  if (!filePath) return false;
-  const normalized = `/${String(filePath).replace(/\\/g, '/').toLowerCase()}`;
-  return STRONG_PATH_HINTS.some(hint => normalized.includes(hint));
-}
-
-function matchFeatureToFileList(feature, files, limit) {
+function matchFeatureToDiskFiles(basePath, feature, options) {
   const tokens = feature?.tokens || [];
   if (tokens.length === 0) return [];
   const nonGeneric = tokens.filter(token => !GENERIC_TOKENS.has(token));
+  const limit = Number(options?.maxDefsPerFeature) || DEFAULT_OPTIONS.maxDefsPerFeature;
+  const maxScan = Number(options?.maxPathScanFiles) || DEFAULT_OPTIONS.maxPathScanFiles;
   const matches = [];
+  const files = listCodeFiles(basePath, maxScan);
 
   for (const file of files) {
     if (isTestFile(file)) continue;
-    const fileLower = String(file).toLowerCase();
+    const fileLower = file.toLowerCase();
     const matched = new Set();
     for (const token of tokens) {
       if (token.length < 4 && !PATH_TOKEN_WHITELIST.has(token)) continue;
@@ -525,16 +509,15 @@ function matchFeatureToFileList(feature, files, limit) {
   return matches.slice(0, limit);
 }
 
-function buildFilePathIndex(basePath, limit) {
+function listCodeFiles(basePath, maxFiles) {
   const results = [];
   const stack = [basePath];
-  const excludedDirs = new Set([
-    '.git', '.github', '.claude', '.codex', '.opencode', '.idea',
-    'node_modules', 'dist', 'build', 'out', 'coverage', 'tmp', 'temp',
-    'vendor', 'target', 'examples', 'docs', 'documentation'
+  const skipDirs = new Set([
+    '.git', 'node_modules', 'vendor', 'dist', 'build', 'target', 'out', 'coverage',
+    '.cache', '.next', 'tmp', 'temp', 'bin', 'obj', '.idea', '.vscode'
   ]);
 
-  while (stack.length > 0 && results.length < limit) {
+  while (stack.length > 0 && results.length < maxFiles) {
     const current = stack.pop();
     let entries;
     try {
@@ -543,20 +526,18 @@ function buildFilePathIndex(basePath, limit) {
       continue;
     }
     for (const entry of entries) {
-      if (results.length >= limit) break;
+      if (results.length >= maxFiles) break;
       const fullPath = path.join(current, entry.name);
-      const relativePath = path.relative(basePath, fullPath).replace(/\\/g, '/');
       if (entry.isDirectory()) {
-        if (entry.name.startsWith('.')) continue;
-        if (excludedDirs.has(entry.name)) continue;
+        if (skipDirs.has(entry.name)) continue;
         stack.push(fullPath);
-      } else if (entry.isFile()) {
-        if (isTestFile(relativePath)) continue;
-        const ext = path.extname(entry.name).toLowerCase();
-        if (EXTENSIONS.includes(ext)) {
-          results.push(relativePath);
-        }
+        continue;
       }
+      if (!entry.isFile()) continue;
+      const ext = path.extname(entry.name).toLowerCase();
+      if (!EXTENSIONS.includes(ext)) continue;
+      const relative = path.relative(basePath, fullPath).replace(/\\/g, '/');
+      results.push(relative);
     }
   }
 
@@ -629,10 +610,6 @@ function collectUsageEvidence(basePath, def, reverseDeps, map, options, referenc
   if (!used) {
     const selfCount = countSymbolInMap(map, def.file, def.name) ?? countSymbolInFile(basePath, def.file, def.name);
     if (selfCount > 1) used = true;
-  }
-
-  if (!used && def.exported && !isTestFile(def.file)) {
-    used = true;
   }
 
   return { used, refs };

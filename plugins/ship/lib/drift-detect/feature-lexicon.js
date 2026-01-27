@@ -12,7 +12,6 @@ const FEATURE_SECTION_PATTERNS = [
   /^capabilities?$/i,
   /^highlights?$/i,
   /^overview$/i,
-  /^why choose\b/i,
   /^why use\b/i,
   /^what it does$/i,
   /^description$/i,

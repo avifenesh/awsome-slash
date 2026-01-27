@@ -26,7 +26,7 @@ const options = {
   deleteAfter: false,
   sequential: false,
   limitLanguage: true,
-  maxFilesPerLanguage: 500,
+  maxFilesPerLanguage: 2000,
   output: path.resolve(process.cwd(), 'plans/skills-integration/research/feature-tuning-report.md')
 };
 

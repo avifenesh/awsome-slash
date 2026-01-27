@@ -47,51 +47,6 @@ const TEST_PATH_PATTERNS = [
   '.spec.',
   '.test.'
 ];
-const PRIORITY_DIR_HINTS = [
-  '/src/',
-  '/lib/',
-  '/app/',
-  '/server/',
-  '/core/',
-  '/pkg/',
-  '/internal/',
-  '/cmd/',
-  '/module/',
-  '/starter/',
-  '/starter-',
-  '/loader/',
-  '/configuration/',
-  '/web/',
-  '/api/',
-  '/handlers/',
-  '/controllers/',
-  '/routes/'
-];
-const SECONDARY_DIR_HINTS = [
-  '/service/',
-  '/services/',
-  '/client/',
-  '/ui/',
-  '/frontend/',
-  '/backend/',
-  '/domain/'
-];
-const DEPRIORITY_DIR_HINTS = [
-  '/example/',
-  '/examples/',
-  '/docs/',
-  '/doc/',
-  '/bench',
-  '/benchmark',
-  '/scripts/',
-  '/tool/',
-  '/tools/',
-  '/build/',
-  '/dist/',
-  '/generated/',
-  '/gen/',
-  '/fixtures/'
-];
 
 /**
  * Detect languages in a repository
@@ -186,24 +141,6 @@ function scanForExtensions(basePath, maxFiles = 100) {
 function isTestPath(relativePath) {
   const normalized = `/${String(relativePath || '').replace(/\\/g, '/').toLowerCase()}`;
   return TEST_PATH_PATTERNS.some(pattern => normalized.includes(pattern));
-}
-
-function scoreFilePath(relativePath) {
-  const normalized = `/${String(relativePath || '').replace(/\\/g, '/').toLowerCase()}`;
-  let score = 0;
-  for (const hint of PRIORITY_DIR_HINTS) {
-    if (normalized.includes(hint)) score += 2;
-  }
-  for (const hint of SECONDARY_DIR_HINTS) {
-    if (normalized.includes(hint)) score += 1;
-  }
-  for (const hint of DEPRIORITY_DIR_HINTS) {
-    if (normalized.includes(hint)) score -= 2;
-  }
-  const depth = normalized.split('/').length - 1;
-  if (depth > 6) score -= 1;
-  if (depth > 10) score -= 1;
-  return score;
 }
 
 function hasNonTestExtension(basePath, extensions) {
@@ -496,14 +433,9 @@ function findFilesForLanguage(basePath, language) {
           const relativePath = path.relative(basePath, fullPath);
           if (slopAnalyzers.shouldExclude(relativePath, EXCLUDE_DIRS)) continue;
           if (isIgnored && isIgnored(relativePath, false)) continue;
-          if (isTestPath(relativePath)) continue;
           const ext = path.extname(entry.name).toLowerCase();
           if (extensions.includes(ext)) {
-            files.push({
-              file: fullPath,
-              relativePath: relativePath.replace(/\\/g, '/'),
-              score: scoreFilePath(relativePath)
-            });
+            files.push(fullPath);
           }
         }
       }
@@ -513,14 +445,7 @@ function findFilesForLanguage(basePath, language) {
   }
   
   scan(basePath);
-  files.sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score;
-    if (a.relativePath.length !== b.relativePath.length) {
-      return a.relativePath.length - b.relativePath.length;
-    }
-    return a.relativePath.localeCompare(b.relativePath);
-  });
-  return files.map(entry => entry.file);
+  return files;
 }
 
 function createSymbolMaps() {

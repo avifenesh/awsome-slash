@@ -1,7 +1,0 @@
-[
-  {"name":"vercel/next.js","language":"JavaScript"},
-  {"name":"tailwindlabs/tailwindcss","language":"TypeScript"},
-  {"name":"traefik/traefik","language":"Go"},
-  {"name":"tauri-apps/tauri","language":"Rust"},
-  {"name":"spring-projects/spring-framework","language":"Java"}
-]

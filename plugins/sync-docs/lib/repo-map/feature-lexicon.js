@@ -1,5 +1,5 @@
 /**
- * Shared lexicon constants for repo-map feature evidence
+ * Shared lexicon for repo-map feature evidence
  *
  * @module lib/repo-map/feature-lexicon
  */
@@ -7,6 +7,11 @@
 'use strict';
 
 const STOPWORDS = new Set([
+  'a', 'an', 'the', 'and', 'or', 'to', 'of', 'for', 'with', 'without', 'from', 'by', 'in', 'on', 'into', 'over',
+  'after', 'before', 'under', 'per', 'as',
+  'is', 'are', 'was', 'were', 'be', 'been', 'being', 'it', 'its', 'we', 'our', 'you', 'your', 'they', 'their',
+  'all', 'any', 'each', 'every', 'some', 'more', 'most', 'less', 'least', 'other', 'another', 'new', 'latest',
+  'one', 'two', 'three',
   'supports', 'support', 'supporting',
   'enable', 'enables', 'enabling',
   'build', 'built', 'building',
@@ -24,8 +29,8 @@ const GENERIC_TOKENS = new Set([
   'security', 'management', 'data', 'system', 'platform',
   'request', 'response', 'route', 'router', 'routing', 'handler', 'middleware',
   'method', 'http', 'json', 'xml', 'body', 'file', 'files', 'error', 'result',
-  'default', 'auto', 'automatic',
-  'check', 'checks', 'servers', 'externalized'
+  'processing',
+  'default', 'auto', 'automatic'
 ]);
 
 const GENERIC_SYMBOL_NAMES = new Set([
@@ -36,15 +41,13 @@ const GENERIC_SYMBOL_NAMES = new Set([
 
 const PATH_TOKEN_WHITELIST = new Set([
   'tls', 'ssl', 'jwt', 'grpc', 'ssh', 'oauth', 'oidc', 'cli', 'gui',
-  'cjs', 'mjs', 'ffi'
+  'sass', 'scss'
 ]);
 
 const TOKEN_ALIASES = {
   routing: ['route', 'router'],
   routes: ['route', 'router'],
   router: ['route'],
-  federation: ['federate', 'federation'],
-  externalized: ['configurationproperties', 'configuration-properties', 'configproperties', 'config-properties'],
   authentication: ['auth'],
   authorization: ['auth'],
   authn: ['auth'],
@@ -64,29 +67,17 @@ const TOKEN_ALIASES = {
   mysql: ['mariadb', 'mysql'],
   mariadb: ['mysql', 'mariadb'],
   mongodb: ['mongo', 'mongodb'],
-  letsencrypt: ['acme', 'autocert']
-  ,verification: ['verify']
-  ,verifying: ['verify']
-  ,streaming: ['stream']
-  ,downloads: ['download']
-  ,timeouts: ['timeout']
-  ,decompression: ['decompress']
-  ,decompressing: ['decompress']
-  ,decoding: ['decode']
-  ,decoded: ['decode']
+  letsencrypt: ['acme', 'autocert'],
+  bundling: ['bundle', 'bundler', 'bundles'],
+  bundler: ['bundle', 'bundling', 'bundles'],
+  tailwind: ['tailwindcss'],
+  sass: ['scss', 'sass']
 };
-
-const EXTENSIONS = [
-  '.js', '.jsx', '.mjs', '.cjs',
-  '.ts', '.tsx', '.mts', '.cts',
-  '.py', '.rs', '.go', '.java'
-];
 
 module.exports = {
   STOPWORDS,
   GENERIC_TOKENS,
   GENERIC_SYMBOL_NAMES,
   PATH_TOKEN_WHITELIST,
-  TOKEN_ALIASES,
-  EXTENSIONS
+  TOKEN_ALIASES
 };

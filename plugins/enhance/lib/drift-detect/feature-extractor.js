@@ -13,16 +13,6 @@ const {
   STOPWORDS,
   FEATURE_BULLET_KEYWORDS
 } = require('./feature-lexicon');
-const {
-  DESCRIPTIVE_HINTS,
-  GENERIC_LABELS,
-  LOW_SIGNAL_EXACT,
-  LOW_SIGNAL_PREFIXES,
-  LOW_SIGNAL_CONTAINS,
-  LOW_SIGNAL_REGEX,
-  PLAN_NOISE_EXACT,
-  PLAN_NOISE_PREFIXES
-} = require('./feature-rules');
 
 const DEFAULT_OPTIONS = {
   maxPerFile: 20,
@@ -30,15 +20,6 @@ const DEFAULT_OPTIONS = {
   minLength: 4,
   maxLength: 120
 };
-
-const ALLOWED_SINGLE_TOKENS = new Set([
-  'API', 'SDK', 'CLI', 'TLS', 'SSL', 'JWT', 'OIDC', 'SAML', 'SSO', 'MFA',
-  'HTTP', 'HTTPS', 'GRPC', 'REST', 'GRAPHQL', 'UI', 'UX', 'SQL', 'S3'
-]);
-
-const SHORT_TOKENS = new Set([
-  'az', 'js', 'ts', 'ui', 'ux', 'ai', 'ml', 'db', 'io'
-]);
 
 function extractFeaturesFromDocs(documents = [], options = {}) {
   const opts = { ...DEFAULT_OPTIONS, ...options };
@@ -95,12 +76,22 @@ function normalizeDocLines(rawLines, filePath) {
     }
     return lines;
   }
-  if (!normalized.endsWith('.rst')) return rawLines;
+  if (!normalized.endsWith('.rst') && !normalized.endsWith('.txt')) return rawLines;
   const lines = [];
+  let inLiteralBlock = false;
   for (let i = 0; i < rawLines.length; i += 1) {
     const line = rawLines[i];
     const next = rawLines[i + 1];
     const trimmed = String(line || '').trim();
+    if (inLiteralBlock) {
+      if (!trimmed) {
+        inLiteralBlock = false;
+      } else if (/^\s+/.test(line)) {
+        continue;
+      } else {
+        inLiteralBlock = false;
+      }
+    }
     if (next) {
       const nextTrimmed = String(next || '').trim();
       if (trimmed && /^[=\\-~`^:+#*]{3,}$/.test(nextTrimmed) && nextTrimmed.length >= trimmed.length) {
@@ -110,6 +101,11 @@ function normalizeDocLines(rawLines, filePath) {
       }
     }
     if (/^\\.\\.\s+/.test(trimmed)) continue;
+    if (/:(attr|meth|class|func|mod|ref|doc|setting|option|exc|data):/i.test(trimmed)) continue;
+    if (trimmed.endsWith('::')) {
+      inLiteralBlock = true;
+      continue;
+    }
     lines.push(line);
   }
   return lines;
@@ -227,21 +223,8 @@ function extractFeaturesFromContent(content, filePath, options) {
     if (inFeatureContext) {
       const listMatch = line.match(/^\s*(?:[-*+]|\d+\.)\s+(?:\[[xX\s]\]\s*)?(.*)$/);
       if (listMatch) {
-        if (isGoalListContext(lines, i)) {
-          const parenthetical = extractParentheticalFeatureList(listMatch[1]);
-          if (parenthetical) {
-            for (const item of parenthetical) {
-              const record = buildFeatureRecord(item, filePath, i + 1, line, options);
-              if (record) {
-                if (isPlanDoc && planContext.active) {
-                  record.plan = buildPlanMeta(line, planContext);
-                }
-                features.push(record);
-              }
-            }
-          }
-          continue;
-        }
+        if (isGoalListContext(lines, i)) continue;
+        if (isUseCaseListContext(lines, i)) continue;
         if (isLinkOnlyItem(line)) continue;
         if (isCodeOptionItem(listMatch[1])) continue;
         const labeled = extractLabeledFeature(listMatch[1]);
@@ -249,14 +232,13 @@ function extractFeaturesFromContent(content, filePath, options) {
         const candidate = (labeled && sourceType === 'release')
           ? cleanupFeatureText(removeLeadingLabel(listMatch[1], labeled))
           : (labeled || cleanupFeatureText(listMatch[1]));
+        if (isUseCaseItem(candidate)) continue;
         if (isCodePathCandidate(candidate)) continue;
         if (isExampleLine(line, candidate)) continue;
-        if (isFormulaLine(line, candidate)) continue;
-        if (isConfigKeyLine(candidate, line)) continue;
         if (isSupportPlanLine(candidate, line)) continue;
         if (isConditionalLead(candidate)) continue;
         if (isNegativeConstraint(candidate)) continue;
-        if (isPlanDoc && isPlanNoiseLine(candidate)) continue;
+        if (isPlanDoc && planContext.active && isPlanNoiseLine(candidate)) continue;
         const split = splitCommaFeatures(candidate);
         if (split) {
           for (const item of split) {
@@ -321,21 +303,8 @@ function extractFeaturesFromContent(content, filePath, options) {
       }
       const listMatch = line.match(/^\s*(?:[-*+]|\d+\.)\s+(?:\[[xX\s]\]\s*)?(.*)$/);
       if (listMatch) {
-        if (isGoalListContext(lines, i)) {
-          const parenthetical = extractParentheticalFeatureList(listMatch[1]);
-          if (parenthetical) {
-            for (const item of parenthetical) {
-              const record = buildFeatureRecord(item, filePath, i + 1, line, options);
-              if (record) {
-                if (isPlanDoc && planContext.active) {
-                  record.plan = buildPlanMeta(line, planContext);
-                }
-                features.push(record);
-              }
-            }
-          }
-          continue;
-        }
+        if (isGoalListContext(lines, i)) continue;
+        if (isUseCaseListContext(lines, i)) continue;
         if (isLinkOnlyItem(line)) continue;
         if (isCodeOptionItem(listMatch[1])) continue;
         const labeled = extractLabeledFeature(listMatch[1]);
@@ -343,14 +312,13 @@ function extractFeaturesFromContent(content, filePath, options) {
         const candidate = (labeled && sourceType === 'release')
           ? cleanupFeatureText(removeLeadingLabel(listMatch[1], labeled))
           : (labeled || cleanupFeatureText(listMatch[1]));
+        if (isUseCaseItem(candidate)) continue;
         if (isCodePathCandidate(candidate)) continue;
         if (isExampleLine(line, candidate)) continue;
-        if (isFormulaLine(line, candidate)) continue;
-        if (isConfigKeyLine(candidate, line)) continue;
         if (isSupportPlanLine(candidate, line)) continue;
         if (isConditionalLead(candidate)) continue;
         if (isNegativeConstraint(candidate)) continue;
-        if (isPlanDoc && isPlanNoiseLine(candidate)) continue;
+        if (isPlanDoc && planContext.active && isPlanNoiseLine(candidate)) continue;
         const isChecked = /\[[xX]\]/.test(line);
         if (currentCategory) {
           if (isConfigPath(candidate) || isGenericLabel(candidate)) {
@@ -461,7 +429,7 @@ function isNonFeatureLabel(label) {
 function extractInlineFeature(line) {
   const trimmed = String(line || '').trim();
   if (/^if\b/i.test(trimmed)) return null;
-  const verbMatch = line.match(/\b(?:supports|provides|provide|includes|enables|allows|adds|introduces)\s+(.+)/i);
+  const verbMatch = line.match(/\b(?:supports|provides|includes|enables|allows|adds|introduces)\s+(.+)/i);
   if (verbMatch) {
     let candidate = cleanupFeatureText(verbMatch[1]);
     candidate = candidate.replace(/^(?:an?|the)\s+/i, '');
@@ -511,6 +479,7 @@ function extractInlineFeature(line) {
       candidate = candidate.slice(0, 120).trim();
     }
     if (candidate.length < 10) return null;
+    if (isProductTagline(candidate)) return null;
     return candidate;
   }
 
@@ -551,7 +520,49 @@ function isBuildArtifactLine(candidate, line) {
 function looksLikeDescriptiveSentence(line) {
   const normalized = normalizeText(line);
   if (!normalized) return false;
-  return DESCRIPTIVE_HINTS.some(hint => normalized.includes(hint));
+  const adjectiveHints = [
+    'easy to use',
+    'easy-to-use',
+    'lightweight',
+    'cross browser',
+    'cross-browser',
+    'general purpose',
+    'general-purpose',
+    'fast',
+    'high performance',
+    'high-performance',
+    'scalable',
+    'extensible',
+    'secure',
+    'modern',
+    'feature rich',
+    'feature-rich',
+    'command line',
+    'command-line',
+    'framework',
+    'library',
+    'tool',
+    'cli',
+    'open source',
+    'efficient'
+  ];
+  return adjectiveHints.some(hint => normalized.includes(hint));
+}
+
+function isProductTagline(candidate) {
+  const normalized = normalizeText(candidate);
+  if (!normalized) return false;
+  if (normalized.includes('written in') || normalized.includes('built with')) return true;
+  if (normalized.includes('optimized for') && normalized.includes('designed for')) return true;
+  if (normalized.startsWith('package for') || normalized.startsWith('library for') || normalized.startsWith('framework for')) return true;
+  if (normalized.includes('package for creating') || normalized.includes('package for building')) return true;
+  const nounHints = ['framework', 'library', 'tool', 'platform', 'generator', 'cli', 'service', 'package'];
+  const adjectiveHints = ['fast', 'flexible', 'modern', 'lightweight', 'simple', 'easy', 'powerful', 'extensible', 'scalable', 'open source', 'opensource'];
+  const hasNoun = nounHints.some(hint => normalized.includes(hint));
+  const hasAdj = adjectiveHints.some(hint => normalized.includes(hint));
+  if (hasNoun && hasAdj) return true;
+  if (normalized.startsWith('static site generator')) return true;
+  return false;
 }
 
 function cleanupFeatureText(text) {
@@ -560,6 +571,9 @@ function cleanupFeatureText(text) {
     .replace(/\[([^\]]+)\]/g, '$1')
     .replace(/`([^`]+)`/g, '$1')
     .replace(/`/g, '')
+    .replace(/&nbsp;|&#160;/gi, ' ')
+    .replace(/&ndash;|&mdash;|&#8211;|&#8212;/gi, ' - ')
+    .replace(/&amp;/gi, '&')
     .replace(/\{\s*#[^}]+\}/g, '')
     .replace(/[*_]/g, '')
     .replace(/<[^>]+>/g, '')
@@ -571,9 +585,6 @@ function cleanupFeatureText(text) {
 
   if (cleaned.includes(' - ')) {
     cleaned = cleaned.split(' - ')[0].trim();
-  }
-  if (cleaned.includes(' – ')) {
-    cleaned = cleaned.split(' – ')[0].trim();
   }
   if (cleaned.includes(' — ')) {
     cleaned = cleaned.split(' — ')[0].trim();
@@ -589,6 +600,9 @@ function cleanupFeatureText(text) {
   }
   if (cleaned.includes(' i.e ')) {
     cleaned = cleaned.split(' i.e ')[0].trim();
+  }
+  if ((cleaned.match(/\(/g) || []).length > (cleaned.match(/\)/g) || []).length) {
+    cleaned = cleaned.replace(/\s*\([^)]*$/, '').trim();
   }
   cleaned = cleaned.replace(/\([a-f0-9]{7,}\)/gi, '').trim();
   cleaned = cleaned.replace(/\(#\d+[^)]*\)/g, '').trim();
@@ -627,6 +641,8 @@ function isLinkOnlyItem(line) {
 
 function isCodeOptionItem(text) {
   const trimmed = String(text || '').trim();
+  if (trimmed.includes('#')) return true;
+  if (!trimmed.includes(' ') && /^[a-z0-9_.-]{12,}$/.test(trimmed)) return true;
   if (!trimmed.startsWith('`')) return false;
   const colonIdx = trimmed.indexOf(':');
   if (colonIdx !== -1 && colonIdx < 40) return true;
@@ -656,44 +672,10 @@ function isExampleLine(line, candidate) {
   if (normalized.startsWith('a ') && /[()]/.test(candidate)) return true;
   if (/\bexample\b/i.test(candidate)) return true;
   if (/\bfor example\b/i.test(line)) return true;
-  return false;
-}
-
-function isFormulaLine(line, candidate) {
-  const raw = String(line || '');
-  const text = String(candidate || '');
-  const normalized = normalizeText(text);
-  if (!normalized) return false;
-  if (normalized.includes('equivalent to') || normalized.includes('is equivalent')) return true;
-  const cleanedRaw = raw
-    .replace(/\[[^\]]+\]\([^)]+\)/g, '')
-    .replace(/^\s*(?:[-*+]|\d+\.)\s+/, '');
-  const hasDigits = /\d/.test(cleanedRaw);
-  const letterCount = (cleanedRaw.match(/[A-Za-z]/g) || []).length;
-  const opCount = (cleanedRaw.match(/[+\-/*%^]/g) || []).length;
-  const mathCount = (cleanedRaw.match(/[0-9+\-/*%^=]/g) || []).length;
-  if (letterCount > 12 && mathCount < 4) return false;
-  if (letterCount > mathCount * 2) return false;
-  const hasOps = opCount > 0;
-  const hasParen = /[()]/.test(cleanedRaw);
-  if (hasDigits && hasOps && hasParen) return true;
-  if (hasDigits && opCount >= 2) return true;
-  if (/\b(step\(\)|sum\(|rate\(|min\(|max\(|avg\(|count\(|quantile\(|sumovertime\()\b/i.test(cleanedRaw)) return true;
-  if (/\/\s*:\s*/.test(cleanedRaw)) return true;
-  return false;
-}
-
-function isConfigKeyLine(candidate, line) {
-  const trimmed = String(candidate || '').trim();
-  if (!trimmed) return false;
-  const full = String(line || '');
-  const cleanedLine = full.replace(/\[[^\]]+\]\([^)]+\)/g, '');
-  const firstToken = trimmed.split(/\s+/)[0] || trimmed;
-  if (/^--/.test(firstToken)) return true;
-  if (!/^[a-z0-9_.-]+$/i.test(firstToken)) return false;
-  if (firstToken.length < 4 || firstToken.length > 40) return false;
-  if (cleanedLine.includes('#') || cleanedLine.includes('=')) return true;
-  if (/(enable|disable|flag|option|setting)/i.test(firstToken) && firstToken.length <= 30) return true;
+  if (/\bequivalent\b/i.test(line)) return true;
+  if (candidate.includes('#')) return true;
+  if (/[a-z0-9_]+\(.+\)/i.test(candidate) && /\d/.test(candidate)) return true;
+  if (/[a-z0-9_]+\(.+\)/i.test(candidate) && /[:/]/.test(candidate)) return true;
   return false;
 }
 
@@ -774,7 +756,12 @@ function isConfigPath(text) {
 function isGenericLabel(text) {
   const normalized = normalizeText(text);
   if (!normalized) return false;
-  return GENERIC_LABELS.has(normalized);
+  return [
+    'name', 'type', 'default', 'options', 'windows', 'mac', 'linux', 'twitter',
+    'e-mail', 'email', 'renderer', 'addons', 'architecture', 'forums', 'github issues',
+    'slack', 'newsletter', 'facebook page', 'resources', 'communication', 'documentation',
+    'source code', 'docs', 'dependency', 'prerequisites', 'installation', 'requirements', 'module'
+  ].includes(normalized);
 }
 
 function buildFeatureRecord(name, filePath, lineNumber, contextLine, options) {
@@ -786,7 +773,6 @@ function buildFeatureRecord(name, filePath, lineNumber, contextLine, options) {
   if (trimmedName.startsWith('@')) return null;
   if (trimmedName.length < options.minLength || trimmedName.length > options.maxLength) return null;
   if (isGenericLabel(trimmedName)) return null;
-  if (isEnvVarListing(trimmedName, contextLine)) return null;
 
   const sourceType = detectSourceType(filePath);
   if (sourceType === 'release' && (isReleaseHeading(trimmedName) || isReleaseNoise(trimmedName))) return null;
@@ -800,16 +786,8 @@ function buildFeatureRecord(name, filePath, lineNumber, contextLine, options) {
   if ((sourceType === 'docs' || sourceType === 'doc') && isInstructionalText(normalized)) return null;
   if (sourceType === 'readme' && isInstructionalText(normalized) && looksLikeInstructionContext(contextLine)) return null;
   const tokens = tokenize(normalized);
-  if (tokens.length === 1 && contextLine) {
-    const contextNormalized = normalizeText(contextLine);
-    if (contextNormalized.startsWith(`${normalized} is `) &&
-      /\b(library|framework|tool|cli|sdk|platform|application)\b/.test(contextNormalized)) {
-      return null;
-    }
-  }
   if (sourceType !== 'release' && tokens.length < 2) {
-    const allowSingleInContext = contextLine && /\bfeatures?\b/i.test(contextLine);
-    if (!allowSingleInContext && !isAllowedSingleToken(trimmedName) && !isFeatureDocPath(filePath)) return null;
+    if (!isAllowedSingleToken(trimmedName) && !isFeatureDocPath(filePath)) return null;
   }
   if (sourceType !== 'release' && isLowSignalText(normalized)) return null;
   if (tokens.length === 0) return null;
@@ -837,11 +815,7 @@ function tokenize(text) {
   return String(text || '')
     .split(/\s+/)
     .map(token => token.trim())
-    .filter(token => {
-      if (!token || STOPWORDS.has(token)) return false;
-      if (token.length >= 3) return true;
-      return token.length === 2 && SHORT_TOKENS.has(token);
-    });
+    .filter(token => token.length >= 3 && !STOPWORDS.has(token));
 }
 
 function looksLikeFeatureItem(text) {
@@ -904,7 +878,6 @@ function trimFeatureName(text, maxLength) {
 function detectSourceType(filePath) {
   const normalized = String(filePath || '').replace(/\\/g, '/').toLowerCase();
   const base = normalized.split('/').pop() || '';
-  if (normalized.includes('/plans/') || base.includes('plan') || normalized.includes('/roadmap/')) return 'plan';
   if (/(^|\/)docs\//.test(normalized)) return 'docs';
   if (/(^|\/)examples?\//.test(normalized)) return 'example';
   if (base.startsWith('readme.')) {
@@ -913,6 +886,7 @@ function detectSourceType(filePath) {
     return 'doc';
   }
   if (base.includes('changelog') || base.includes('release') || base.includes('history')) return 'release';
+  if (normalized.includes('/plans/') || base.includes('plan')) return 'plan';
   if (normalized.includes('/checklists/')) return 'checklist';
   return 'doc';
 }
@@ -1003,39 +977,74 @@ function isReleaseNoise(text) {
 
 function isLowSignalText(normalized) {
   if (!normalized) return true;
-  if (LOW_SIGNAL_EXACT.has(normalized)) return true;
-  for (const prefix of LOW_SIGNAL_PREFIXES) {
-    if (normalized.startsWith(prefix)) return true;
-  }
-  for (const fragment of LOW_SIGNAL_CONTAINS) {
-    if (normalized.includes(fragment)) return true;
-  }
-  for (const regex of LOW_SIGNAL_REGEX) {
-    if (regex.test(normalized)) return true;
-  }
+  if (['windows', 'twitter', 'email', 'e-mail', 'architecture'].includes(normalized)) return true;
+  if (['experimental', 'example', 'related'].includes(normalized)) return true;
+  if (['location', 'filename', 'reviewed'].includes(normalized)) return true;
+  if (['short', 'tested', 'protip'].includes(normalized)) return true;
+  if (normalized === 'format') return true;
+  if (normalized.startsWith('layout')) return true;
   if (normalized.endsWith('features') && normalized.split(' ').length <= 4) return true;
+  if (normalized === 'important') return true;
+  if (normalized.startsWith('unlike ')) return true;
+  if (normalized.includes('spoiler alert')) return true;
+  if (normalized.includes('sponsor') || normalized.includes('funding provider')) return true;
+  if (normalized.includes('support contract') || normalized.includes('trademark')) return true;
+  if ((normalized.endsWith('that too') || normalized === 'that too') && normalized.length < 20) return true;
   if (normalized.endsWith('such as') || normalized.endsWith('including')) return true;
+  if (/^(it|after|since|returns|return|argument|many|additional|in the)\b/.test(normalized)) return true;
   if (normalized.startsWith('vite ') && /\d/.test(normalized)) return true;
+  if (normalized.includes('following out of the box')) return true;
+  if (normalized.startsWith('node.js') || normalized.includes('eol') || normalized.includes('required')) return true;
+  if (normalized.includes('need to') && /(install|installing|dependencies|dependency)/.test(normalized)) return true;
+  if (normalized.includes('before installing') || normalized.includes('after installing')) return true;
+  if (normalized.includes('built in the') && normalized.includes('directory')) return true;
+  if (normalized.includes('test coverage') || normalized.includes('coverage')) return true;
+  if (normalized.includes('optional dependency') || normalized.includes('optional dependencies')) return true;
+  if (normalized.includes('no longer') || normalized.includes('migrated') || normalized.includes('deprecated')) return true;
   if (normalized.includes('version') && /\d/.test(normalized)) return true;
   if (normalized.includes('http') || normalized.includes('https')) return true;
+  if (normalized.startsWith('please note')) return true;
   if (normalized.includes('build matrix')) return true;
+  if (/^(element|elements)\b/.test(normalized) && /(visible|enabled|considered)/.test(normalized)) return true;
+  if (/^(users to|add \w+ todos)\b/.test(normalized)) return true;
   if (normalized.startsWith('--') || normalized.startsWith('-')) return true;
   if (/^(get|post|put|delete|patch|options|head)$/.test(normalized)) return true;
+  if (normalized.includes('and much more')) return true;
+  if (normalized.includes('support the project')) return true;
   if (normalized.includes('donat') || normalized.includes('donation') || normalized.includes('donating')) return true;
   if (normalized.includes('cup of coffee') || normalized.includes('buy me a coffee')) return true;
+  if (normalized.includes('popular packages')) return true;
+  if (normalized.includes('release candidate') || normalized.includes('release candidates')) return true;
+  if (normalized.includes('bug-fix') || normalized.includes('bug fix') || normalized.includes('bug-fixes')) return true;
+  if (normalized.includes('community forum')) return true;
+  if (normalized.includes('for example') || normalized.includes('for instance')) return true;
   if (normalized.includes('refer to') || normalized.startsWith('see ') || normalized.startsWith('see:')) return true;
+  if (normalized.includes('example') && (normalized.includes('here s') || normalized.endsWith('example'))) return true;
   if (normalized.endsWith('-')) return true;
   if (/^(you|your|we|our)\b/.test(normalized)) {
     const wordCount = normalized.split(' ').length;
     if (wordCount <= 4) return true;
   }
+  if (normalized.includes('equivalent to')) return true;
+  if (normalized.startsWith('want to ') || normalized.startsWith('wants to ')) return true;
+  if (normalized.includes('aims to be') || normalized.includes('under the hood')) return true;
+  if (!normalized.includes(' ') && normalized.length > 18 && normalized === normalized.toLowerCase()) return true;
+  if (/\b\d+\b/.test(normalized) && normalized.includes('equivalent')) return true;
+  if (/(sumovertime|min|max|step)\s*\d/.test(normalized)) return true;
+  if (/(rewrite|refactor|modernize)\b/.test(normalized) && normalized.includes('aim')) return true;
+  if (normalized.startsWith('module ') || normalized.startsWith('modules ')) return true;
+  if (normalized.includes('environment variable')) return true;
+  if (normalized.includes('sys path') || normalized.includes('sys.path')) return true;
+  if (normalized.startsWith('does the change include')) return true;
+  if (normalized.startsWith('if not')) return true;
+  if (/(developer|instant)\s+(ready|feedback)/.test(normalized)) return true;
   return false;
 }
 
 function isInstructionalText(normalized) {
   if (!normalized) return false;
-  const cleaned = normalized.replace(/^(optional|optionally)\s+/, '');
-  return /^(create|add|copy|update|remove|delete|install|configure|setup|set up|run|download|clone|check|verify|use|open|start|stop|build|compile|generate|train|fine tune|fine-tune|evaluate|export|edit|write)\b/.test(cleaned);
+  const cleaned = normalized.replace(/^(optional|optionally|or|then)\s+/, '');
+  return /^(create|add|copy|update|remove|delete|install|configure|setup|set up|run|download|clone|check|verify|use|open|start|stop|build|compile|generate|train|fine tune|fine-tune|evaluate|export|edit|write|grab|join|get|visit|read|learn|see|follow|try)\b/.test(cleaned);
 }
 
 function isPlanInstruction(normalized) {
@@ -1047,13 +1056,13 @@ function looksLikeInstructionContext(contextLine) {
   const line = String(contextLine || '').toLowerCase();
   if (!line) return false;
   if (/^\s*\d+\.\s+/.test(line)) return true;
-  if (/^\s*[-*+]\s+/.test(line) && /(install|build|run|download|configure|setup|enable)/.test(line)) return true;
+  if (/^\s*[-*+]\s+/.test(line) && /(install|build|run|download|configure|setup|enable|get|grab|join|visit|read|learn|see|follow|try)/.test(line)) return true;
   if (/(pip install|brew install|apt install|yum install|docker run|docker build)/.test(line)) return true;
   return false;
 }
 
 function isGoalListContext(lines, index) {
-  for (let back = 1; back <= 4; back += 1) {
+  for (let back = 1; back <= 2; back += 1) {
     const prior = lines[index - back];
     if (!prior) continue;
     const normalized = normalizeText(prior);
@@ -1065,36 +1074,39 @@ function isGoalListContext(lines, index) {
   return false;
 }
 
+function isUseCaseListContext(lines, index) {
+  for (let back = 1; back <= 2; back += 1) {
+    const prior = lines[index - back];
+    if (!prior) continue;
+    const normalized = normalizeText(prior);
+    if (!normalized) continue;
+    if (/(use cases?|use-case|used to create|used to build|used for|widely used|ideal for|great for|suitable for|well suited for|perfect for|good for)\b/.test(normalized)) {
+      return true;
+    }
+    if (/(who should use|who is this for|target audience|targeted at|applications? include)\b/.test(normalized)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isUseCaseItem(text) {
+  const normalized = normalizeText(text);
+  if (!normalized) return false;
+  if (/\b(support|supports|supporting|enable|enables|allow|allows|provide|provides|includes|including|built)\b/.test(normalized)) {
+    return false;
+  }
+  if (/(sites?|blogs?|portfolios?|landing pages?|resumes?|cvs?)$/.test(normalized)) {
+    return true;
+  }
+  return false;
+}
+
 function isAllowedSingleToken(text) {
   const trimmed = String(text || '').trim();
   if (!trimmed) return false;
-  const upper = trimmed.toUpperCase();
-  if (ALLOWED_SINGLE_TOKENS.has(upper)) return true;
-  if (trimmed.includes('-')) {
-    if (/^[A-Z0-9_-]+$/.test(trimmed)) return false;
-    return true;
-  }
-  if (/^[A-Z0-9_]+$/.test(trimmed)) return false;
-  return /^[A-Z][A-Za-z0-9]{4,}$/.test(trimmed);
-}
-
-function isEnvVarListing(text, contextLine) {
-  const raw = String(text || '').trim();
-  if (!raw) return false;
-  const tokens = raw.match(/\b[A-Z][A-Z0-9_]{2,}\b/g) || [];
-  if (tokens.length === 0) return false;
-  const longTokens = tokens.filter(token => token.includes('_') || /\d/.test(token) || token.length >= 10);
-  if (longTokens.length === 0) return false;
-  if (tokens.length >= 2) return true;
-  const token = tokens[0];
-  if (raw === token) return true;
-  if (raw.startsWith(token)) {
-    const rest = raw.slice(token.length).trim();
-    if (/^(?:-|–|—|:)/.test(rest)) return true;
-    if (/(defaults?|default|env|environment|config|for\b|set\b|value\b)/i.test(rest)) return true;
-  }
-  if (contextLine && /(env var|environment variable|configuration|config)/i.test(contextLine)) return true;
-  return false;
+  if (trimmed.includes('-')) return true;
+  return /^[A-Z][A-Za-z0-9]{5,}$/.test(trimmed);
 }
 
 function isFeatureDocPath(filePath) {
@@ -1147,19 +1159,6 @@ function splitCommaFeatures(text) {
   return parts;
 }
 
-function extractParentheticalFeatureList(text) {
-  const value = String(text || '').trim();
-  if (!value) return null;
-  const lower = value.toLowerCase();
-  if (!/(for example|for instance|e\.g\.|such as)/.test(lower)) return null;
-  const match = value.match(/\(([^)]+)\)/);
-  if (!match) return null;
-  let inside = cleanupFeatureText(match[1]);
-  inside = inside.replace(/^(for example|for instance|e\.g\.)\s*,?\s*/i, '');
-  if (!inside || inside.length < 6) return null;
-  return splitCommaFeatures(inside);
-}
-
 function parsePlanHeading(title) {
   const normalized = normalizeText(title);
   if (!normalized) return { active: false, status: null, phase: null, heading: null };
@@ -1200,34 +1199,9 @@ function resolvePlanStatus(line, fallback) {
 function isPlanNoiseLine(text) {
   const normalized = normalizeText(text);
   if (!normalized) return true;
-  if (PLAN_NOISE_EXACT.has(normalized)) return true;
-  for (const prefix of PLAN_NOISE_PREFIXES) {
-    if (normalized.startsWith(prefix)) return true;
-  }
-  if (/^task\s+\d+\b/.test(normalized)) return true;
-  if (normalized.startsWith('focus on ')) return true;
-  if (normalized.startsWith('final ')) return true;
-  if (/^(improve|update)\b/.test(normalized) &&
-    /(documentation|formatting|organization|guide|dashboard|investigation)/.test(normalized)) {
-    return true;
-  }
-  if (/^(update|updates|document|documents|apply|applies|ensure|ensures|review|reviews|verify|verifies|configure|configures|include|includes|reflect|reflects|keep|keeps)\b/.test(normalized) &&
-    !/\b(feature|support|plugin|api|client|engine|driver|connector|integration|schema|migration)\b/.test(normalized)) {
-    return true;
-  }
-  if (/^(all|some|no|these|this|that)\b/.test(normalized) &&
-    /\b(should|can|must|need|needs|required|required to|be)\b/.test(normalized)) {
-    return true;
-  }
-  if (normalized.includes('agents md') || normalized.includes('documentation') || normalized.includes('documented') || normalized.includes('docs')) {
-    return true;
-  }
-  if (/^(no|some|all)\b/.test(normalized) &&
-    /(documented|benchmark|examples?|files?|paths?|dependencies|suppression)/.test(normalized)) {
-    return true;
-  }
-  if (/\b(guide|dashboard|investigation|results)\b/.test(normalized)) return true;
-  if (/\b(correct|accurate|format|formats|import statements|file paths)\b/.test(normalized)) return true;
+  if (normalized.startsWith('layout')) return true;
+  if (['location', 'filename', 'reviewed'].includes(normalized)) return true;
+  if (normalized.startsWith('keybindings')) return true;
   return false;
 }
 
