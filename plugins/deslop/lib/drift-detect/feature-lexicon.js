@@ -42,6 +42,8 @@ const NON_FEATURE_SECTION_PATTERNS = [
   /^documentation$/i,
   /^docs?$/i,
   /^usage$/i,
+  /^extend\b/i,
+  /^extending\b/i,
   /^examples$/i,
   /^contributing$/i,
   /^license$/i,

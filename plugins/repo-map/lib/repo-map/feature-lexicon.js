@@ -107,7 +107,10 @@ const TOKEN_ALIASES = {
   rotation: ['rotate', 'orientation'],
   rotating: ['rotate'],
   ratio: ['aspectratio'],
-  aspect: ['aspectratio']
+  aspect: ['aspectratio'],
+  serializability: ['serialize', 'serialization', 'serializable'],
+  serializable: ['serialize', 'serialization'],
+  reproducibility: ['reproduce', 'reproducible']
 };
 
 module.exports = {
