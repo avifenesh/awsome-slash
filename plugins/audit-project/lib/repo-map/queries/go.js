@@ -8,7 +8,11 @@ module.exports = {
   exports: [],
   functions: [
     { pattern: 'func $NAME($$$) { $$$ }', nameVar: 'NAME' },
-    { pattern: 'func ($$$) $NAME($$$) { $$$ }', nameVar: 'NAME' }
+    { pattern: 'func $NAME($$$) $RET { $$$ }', nameVar: 'NAME' },
+    { pattern: 'func $NAME($$$) ($$$) { $$$ }', nameVar: 'NAME' },
+    { pattern: 'func ($$$) $NAME($$$) { $$$ }', nameVar: 'NAME' },
+    { pattern: 'func ($$$) $NAME($$$) $RET { $$$ }', nameVar: 'NAME' },
+    { pattern: 'func ($$$) $NAME($$$) ($$$) { $$$ }', nameVar: 'NAME' }
   ],
   classes: [],
   types: [
