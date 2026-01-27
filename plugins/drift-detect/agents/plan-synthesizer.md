@@ -24,7 +24,7 @@ You perform deep semantic analysis on project data collected by JavaScript colle
 You receive collected data as structured JSON:
 - `github`: Issues, PRs, milestones, categorized items, stale items
 - `docs`: Documentation analysis, checkboxes, features, plans
-- `code`: Directory structure, frameworks, health indicators
+- `code`: Directory structure, frameworks, health indicators, repo map summary
 </input-format>
 
 <core-value>
@@ -54,6 +54,8 @@ Compare docs to implementation using semantic matching:
 - "user auth" <-> auth/, login.js, session/
 - "API endpoints" <-> routes/, handlers/
 - Consider synonyms and related concepts
+
+Prefer `code.repoMap.evidence` when available for concrete file/symbol matches.
 
 Categorize: Documented-not-implemented, Implemented-not-documented, Partial, Aligned
 

@@ -69,5 +69,9 @@ module.exports = {
     { pattern: 'use $SOURCE;', sourceVar: 'SOURCE', kind: 'use' },
     { pattern: 'use $SOURCE::{ $$$ };', sourceVar: 'SOURCE', kind: 'use' },
     { pattern: 'use $SOURCE::*;', sourceVar: 'SOURCE', kind: 'use' }
+  ],
+  references: [
+    { pattern: '$NAME($$$)', nameVar: 'NAME', kind: 'call' },
+    { pattern: '$TYPE::$NAME($$$)', nameVar: 'NAME', kind: 'method' }
   ]
 };

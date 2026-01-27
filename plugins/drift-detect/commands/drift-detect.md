@@ -1,7 +1,7 @@
 ---
 description: Deep repository analysis to realign project plans with actual code reality
 argument-hint: "[--sources github,docs,code] [--depth quick|thorough] [--output file|display|both] [--file PATH]"
-allowed-tools: Bash(git:*), Bash(gh:*), Read, Glob, Grep, Task, Write
+allowed-tools: Bash(git:*), Bash(gh:*), Bash(npm:*), Read, Glob, Grep, Task, Write, AskUserQuestion
 ---
 
 # /drift-detect - Reality Check Scanner
@@ -31,12 +31,66 @@ const pluginPath = '${CLAUDE_PLUGIN_ROOT}'.replace(/\\/g, '/');
 const collectors = require(`${pluginPath}/lib/drift-detect/collectors.js`);
 const repoMap = require(`${pluginPath}/lib/repo-map`);
 
-// Suggest repo-map if missing or stale
-const mapStatus = repoMap.status(process.cwd());
+// Repo map is optional. If ast-grep exists, build the map. If not, ask whether to install.
+const repoRoot = process.cwd();
+const mapStatus = repoMap.status(repoRoot);
+const astGrep = await repoMap.checkAstGrepInstalled();
+
 if (!mapStatus.exists) {
-  console.log('Repo map not found. For faster, more accurate drift detection, run: /repo-map init');
+  if (astGrep.found) {
+    console.log('Repo map not found. Building it now for faster, more accurate drift detection...');
+    const initResult = await repoMap.init(repoRoot, { includeDocs: false });
+    if (initResult.success) {
+      console.log(`Repo map created (${initResult.summary.files} files, ${initResult.summary.symbols} symbols).`);
+    } else {
+      console.log(`Repo map init failed (${initResult.error}). Continuing without repo map.`);
+    }
+  } else {
+    const response = await AskUserQuestion({
+      questions: [{
+        header: 'Repo map setup',
+        question: 'ast-grep is not installed. What would you like to do?',
+        options: [
+          { label: 'Install + init now', description: 'Agent installs ast-grep and builds repo map' },
+          { label: "I'll install + init", description: 'You will install ast-grep and run /repo-map init' },
+          { label: 'Continue without map', description: 'Skip repo map for this run' }
+        ],
+        multiple: false
+      }]
+    });
+
+    const choice = response?.[0]?.[0];
+    if (choice === 'Install + init now') {
+      try {
+        await Bash({
+          command: 'npm install -g @ast-grep/cli',
+          description: 'Installs ast-grep CLI globally'
+        });
+        const initResult = await repoMap.init(repoRoot, { includeDocs: false });
+        if (initResult.success) {
+          console.log(`Repo map created (${initResult.summary.files} files, ${initResult.summary.symbols} symbols).`);
+        } else {
+          console.log(`Repo map init failed (${initResult.error}). Continuing without repo map.`);
+        }
+      } catch {
+        console.log('Failed to install ast-grep. Continuing without repo map.');
+      }
+    } else if (choice === "I'll install + init") {
+      console.log(repoMap.getInstallInstructions());
+      console.log('Install ast-grep, then run /repo-map init and re-run /drift-detect.');
+      return;
+    }
+  }
 } else if (mapStatus.status?.staleness?.isStale) {
-  console.log(`Repo map is stale (${mapStatus.status.staleness.reason}). Consider: /repo-map update`);
+  if (astGrep.found) {
+    console.log(`Repo map is stale (${mapStatus.status.staleness.reason}). Updating now...`);
+    const updateResult = await repoMap.update(repoRoot);
+    if (!updateResult.success) {
+      console.log(`Repo map update failed (${updateResult.error}). Continuing with stale map.`);
+    }
+  } else {
+    console.log(`Repo map is stale (${mapStatus.status.staleness.reason}). Continuing without updating (ast-grep not installed).`);
+  }
 }
 
 const args = '$ARGUMENTS'.split(' ').filter(Boolean);

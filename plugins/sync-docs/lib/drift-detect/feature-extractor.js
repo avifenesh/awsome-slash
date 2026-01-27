@@ -13,7 +13,6 @@ const {
   STOPWORDS,
   FEATURE_BULLET_KEYWORDS
 } = require('./feature-lexicon');
-
 const {
   DESCRIPTIVE_HINTS,
   GENERIC_LABELS,
@@ -515,7 +514,7 @@ function isBuildArtifactLine(candidate, line) {
 function looksLikeDescriptiveSentence(line) {
   const normalized = normalizeText(line);
   if (!normalized) return false;
-  return containsAny(normalized, DESCRIPTIVE_HINTS);
+  return DESCRIPTIVE_HINTS.some(hint => normalized.includes(hint));
 }
 
 function cleanupFeatureText(text) {
@@ -751,6 +750,13 @@ function buildFeatureRecord(name, filePath, lineNumber, contextLine, options) {
   if ((sourceType === 'docs' || sourceType === 'doc') && isInstructionalText(normalized)) return null;
   if (sourceType === 'readme' && isInstructionalText(normalized) && looksLikeInstructionContext(contextLine)) return null;
   const tokens = tokenize(normalized);
+  if (tokens.length === 1 && contextLine) {
+    const contextNormalized = normalizeText(contextLine);
+    if (contextNormalized.startsWith(`${normalized} is `) &&
+      /\b(library|framework|tool|cli|sdk|platform|application)\b/.test(contextNormalized)) {
+      return null;
+    }
+  }
   if (sourceType !== 'release' && tokens.length < 2) {
     if (!isAllowedSingleToken(trimmedName) && !isFeatureDocPath(filePath)) return null;
   }
@@ -943,22 +949,27 @@ function isReleaseNoise(text) {
 function isLowSignalText(normalized) {
   if (!normalized) return true;
   if (LOW_SIGNAL_EXACT.has(normalized)) return true;
-  if (startsWithAny(normalized, LOW_SIGNAL_PREFIXES)) return true;
+  for (const prefix of LOW_SIGNAL_PREFIXES) {
+    if (normalized.startsWith(prefix)) return true;
+  }
+  for (const fragment of LOW_SIGNAL_CONTAINS) {
+    if (normalized.includes(fragment)) return true;
+  }
+  for (const regex of LOW_SIGNAL_REGEX) {
+    if (regex.test(normalized)) return true;
+  }
   if (normalized.endsWith('features') && normalized.split(' ').length <= 4) return true;
-  if (containsAny(normalized, LOW_SIGNAL_CONTAINS)) return true;
-  if ((normalized.endsWith('that too') || normalized === 'that too') && normalized.length < 20) return true;
   if (normalized.endsWith('such as') || normalized.endsWith('including')) return true;
-  if (matchesAnyRegex(normalized, LOW_SIGNAL_REGEX)) return true;
   if (normalized.startsWith('vite ') && /\d/.test(normalized)) return true;
   if (normalized.includes('version') && /\d/.test(normalized)) return true;
   if (normalized.includes('http') || normalized.includes('https')) return true;
-  if (/^(element|elements)\b/.test(normalized) && /(visible|enabled|considered)/.test(normalized)) return true;
-  if (/^(users to|add \w+ todos)\b/.test(normalized)) return true;
+  if (normalized.includes('build matrix')) return true;
+  if (normalized.startsWith('--') || normalized.startsWith('-')) return true;
   if (/^(get|post|put|delete|patch|options|head)$/.test(normalized)) return true;
-  if (normalized.includes('rewrite') && normalized.includes('aims to')) return true;
-  if (normalized.includes('example') && (normalized.includes('here s') || normalized.endsWith('example'))) return true;
+  if (normalized.includes('donat') || normalized.includes('donation') || normalized.includes('donating')) return true;
+  if (normalized.includes('cup of coffee') || normalized.includes('buy me a coffee')) return true;
+  if (normalized.includes('refer to') || normalized.startsWith('see ') || normalized.startsWith('see:')) return true;
   if (normalized.endsWith('-')) return true;
-  if (normalized.startsWith('see ') || normalized.startsWith('see:')) return true;
   if (/^(you|your|we|our)\b/.test(normalized)) {
     const wordCount = normalized.split(' ').length;
     if (wordCount <= 4) return true;
@@ -1097,23 +1108,10 @@ function isPlanNoiseLine(text) {
   const normalized = normalizeText(text);
   if (!normalized) return true;
   if (PLAN_NOISE_EXACT.has(normalized)) return true;
-  if (startsWithAny(normalized, PLAN_NOISE_PREFIXES)) return true;
+  for (const prefix of PLAN_NOISE_PREFIXES) {
+    if (normalized.startsWith(prefix)) return true;
+  }
   return false;
-}
-
-function containsAny(text, terms) {
-  if (!text) return false;
-  return terms.some(term => text.includes(term));
-}
-
-function startsWithAny(text, prefixes) {
-  if (!text) return false;
-  return prefixes.some(prefix => text.startsWith(prefix));
-}
-
-function matchesAnyRegex(text, regexes) {
-  if (!text) return false;
-  return regexes.some(regex => regex.test(text));
 }
 
 module.exports = {

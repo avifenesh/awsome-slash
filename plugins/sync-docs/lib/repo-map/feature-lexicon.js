@@ -41,6 +41,7 @@ const TOKEN_ALIASES = {
   routing: ['route', 'router'],
   routes: ['route', 'router'],
   router: ['route'],
+  federation: ['federate', 'federation'],
   authentication: ['auth'],
   authorization: ['auth'],
   authn: ['auth'],

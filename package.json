@@ -73,6 +73,7 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.3",
     "js-yaml": "^4.1.1"
   },
   "devDependencies": {

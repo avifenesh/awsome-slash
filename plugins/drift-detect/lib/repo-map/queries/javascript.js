@@ -51,5 +51,11 @@ module.exports = {
     { pattern: 'const $NAME = require($SOURCE)', sourceVar: 'SOURCE', kind: 'require' },
     { pattern: 'const { $$$ } = require($SOURCE)', sourceVar: 'SOURCE', kind: 'require' },
     { pattern: 'require($SOURCE)', sourceVar: 'SOURCE', kind: 'require' }
+  ],
+  references: [
+    { pattern: '$NAME($$$)', nameVar: 'NAME', kind: 'call' },
+    { pattern: 'await $NAME($$$)', nameVar: 'NAME', kind: 'call' },
+    { pattern: 'new $NAME($$$)', nameVar: 'NAME', kind: 'new' },
+    { pattern: '$OBJ.$NAME($$$)', nameVar: 'NAME', kind: 'method' }
   ]
 };

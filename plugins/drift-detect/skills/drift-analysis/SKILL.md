@@ -128,6 +128,7 @@ Output SPECIFIC actions, not generic advice:
 
 For detailed implementation:
 - **Data contracts**: `references/data-contracts.md` - Input data structures and how to interpret them
+- Feature extraction: `references/feature-extraction.md`
 - Detection patterns: `references/detection-patterns.md`
 - Priority framework: `references/prioritization.md`
 - Report templates: `references/output-templates.md`

@@ -34,5 +34,11 @@ module.exports = {
     ...javascript.imports,
     { pattern: 'import type { $$$ } from $SOURCE', sourceVar: 'SOURCE', kind: 'type' },
     { pattern: 'import type $NAME from $SOURCE', sourceVar: 'SOURCE', kind: 'type' }
+  ],
+  references: [
+    ...(javascript.references || []),
+    { pattern: 'class $CLASS extends $NAME { $$$ }', nameVar: 'NAME', kind: 'extends' },
+    { pattern: 'class $CLASS implements $NAME { $$$ }', nameVar: 'NAME', kind: 'implements' },
+    { pattern: 'interface $NAME extends $BASE { $$$ }', nameVar: 'BASE', kind: 'extends' }
   ]
 };

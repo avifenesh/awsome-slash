@@ -137,7 +137,15 @@ interface DocsAnalysis {
     };
   };
   
-  features: string[];            // Extracted feature names (max 20)
+  features: string[];            // Extracted feature names (max 60)
+  featureDetails: Array<{
+    name: string;
+    normalized: string;
+    tokens: string[];
+    sourceFile: string;
+    sourceLine: number;
+    context: string;
+  }>;
   plans: string[];               // TODO/FIXME/roadmap items (max 15)
   
   checkboxes: {
@@ -163,7 +171,7 @@ interface DocsAnalysis {
 
 | Data Point | Agent Should |
 |------------|--------------|
-| `features` | Cross-reference with `code.symbols` |
+| `features` | Cross-reference with `code.repoMap.symbols` (preferred) or `code.symbols` |
 | `checkboxes.items` | Validate each against code existence |
 | `checkboxes` with checked=true but no code | Flag as "marked done but not implemented" |
 | `checkboxes` with checked=false but code exists | Flag as "implemented but not marked done" |
@@ -200,6 +208,83 @@ interface CodeAnalysis {
       functions: string[];
       classes: string[];
       exports: string[];
+      types?: string[];
+      constants?: string[];
+    };
+  };
+
+  repoMap: {
+    available: boolean;
+    summary?: {
+      generated: string;
+      updated: string;
+      commit: string | null;
+      branch: string | null;
+      files: number;
+      symbols: number;
+      languages: string[];
+    };
+    staleness?: {
+      isStale: boolean;
+      reason: string | null;
+      commitsBehind: number;
+      suggestFullRebuild: boolean;
+    };
+    symbols?: {
+      [filePath: string]: {
+        exports: string[];
+        functions: string[];
+        classes: string[];
+        types: string[];
+        constants: string[];
+      };
+    };
+    dependencies?: {
+      [filePath: string]: string[];
+    };
+    evidence?: {
+      available: boolean;
+      terms: Array<{
+        term: string;
+        matches: Array<{
+          file: string;
+          pathMatch: boolean;
+          symbols: {
+            exports: string[];
+            functions: string[];
+            classes: string[];
+            types: string[];
+            constants: string[];
+          };
+        }>;
+      }>;
+      unmatched: string[];
+    };
+    featureEvidence?: {
+      available: boolean;
+      features: Array<{
+        feature: string;
+        normalized: string;
+        tokens: string[];
+        status: 'implemented' | 'partial' | 'missing';
+        defs: Array<{
+          file: string;
+          name: string;
+          kind: string;
+          line: number | null;
+          exported: boolean;
+        }>;
+        refs: Array<{
+          file: string;
+          count: number;
+        }>;
+        snippets: Array<{
+          file: string;
+          line: number;
+          text: string;
+        }>;
+      }>;
+      unmatched: string[];
     };
   };
   
@@ -222,7 +307,9 @@ interface CodeAnalysis {
 |------------|--------------|
 | `projectType.isMultiLang` | Note complexity, check each language has tests |
 | `frameworks` | Compare to documented tech stack |
-| `symbols` | Use for feature-to-code matching |
+| `repoMap.evidence` | Use as primary doc ↔ code matching evidence |
+| `repoMap.symbols` | Use as primary symbol source when available |
+| `symbols` | Use only when repoMap is unavailable |
 | `health.hasTests: false` | Flag as critical gap |
 | `health.hasCi: false` | Flag as medium gap |
 | `topLevelDirs` | Map to documented features |
@@ -244,7 +331,8 @@ Documented Features:
 
 Implemented Features:
 - code.topLevelDirs (directory-based)
-- code.symbols (function/class names)
+- code.repoMap.symbols (preferred AST symbols)
+- code.symbols (fallback symbols)
 - code.implementedFeatures (pattern-detected)
 ```
 
@@ -253,7 +341,7 @@ Implemented Features:
 For each documented feature:
 1. Normalize the name (lowercase, remove separators)
 2. Search in `code.topLevelDirs` for directory match
-3. Search in `code.symbols` for function/class match
+3. Search in `code.repoMap.symbols` (or `code.symbols`) for function/class match
 4. Categorize as:
    - **Implemented**: Found in code
    - **Partially Implemented**: Some evidence but incomplete
@@ -302,12 +390,12 @@ interface Priority {
 Given:
 - docs.checkboxes.items = [{checked: true, text: "Add user authentication"}]
 - code.topLevelDirs = ["src", "tests", "docs"]
-- code.symbols = {"src/index.js": {functions: ["main", "setup"]}}
+ - code.repoMap.symbols = {"src/index.js": {functions: ["main", "setup"], exports: []}}
 
 Agent reasoning:
 1. "Add user authentication" is marked complete
 2. Search for "auth" in topLevelDirs → NOT FOUND
-3. Search for "auth", "login", "session" in symbols → NOT FOUND
+3. Search for "auth", "login", "session" in repoMap symbols → NOT FOUND
 4. CONCLUSION: DRIFT DETECTED
    - Checkbox marked done but no auth code exists
    - Recommendation: Either implement auth or uncheck the item

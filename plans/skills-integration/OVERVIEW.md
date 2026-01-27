@@ -214,3 +214,52 @@ To continue this work:
 - Updated: `plugins/drift-detect/agents/plan-synthesizer.md` (224 → 99 lines)
 - Updated: `plugins/drift-detect/skills/drift-analysis/SKILL.md` (325 → 134 lines)
 - Updated: `plugins/drift-detect/lib/drift-detect/collectors.js` (multi-lang support)
+
+---
+
+## Session Handoff (January 26, 2026)
+
+### Repo Map Work Completed
+- Repo map plugin is merged to `main` (PR #140).
+- AST-based mapping uses ast-grep with batch runs for performance.
+- Multi-language detection fixed (supplement config detection with extension scan).
+- Windows detection improved (resolve `sg.exe` when using global npm).
+- Incremental updates hardened; full init/update tested on multiple repos.
+
+### Repo Map Gaps (What We Still Want)
+Repo map currently stores symbols + imports. It is still missing the “logic layer” used by tools like Aider.
+We want it to answer questions the agent cannot get from grep alone:
+- **Def/ref graph**: connect references to definitions across files.
+- **Relevance ranking**: PageRank or similar to surface the most important files/symbols.
+- **Token-budgeted map**: provide a compact, ranked view instead of full JSON.
+- **Context snippets**: show short definition bodies/signatures, not just names.
+
+Reference implementation: Aider’s repo map uses tree-sitter tags to build a def/ref graph, then ranks files and only includes top-ranked snippets in a small token budget.
+
+### Skills Plan (Global)
+- Keep skills as knowledge-only; scripts execute.
+- Maintain progressive disclosure (core SKILL.md <500 lines, references in `references/`).
+- Use XML tags for critical sections; keep instruction hierarchy explicit.
+- Keep commands minimal (orchestration only). Agents load skills via frontmatter.
+
+### Drift Detect Plan (This PR)
+Goal: standalone PR that only touches drift-detect structure and repo-map usage.
+
+Implemented in this branch:
+- `lib/repo-map/index.js`: new helpers `summarizeForDrift`, `findEvidence` (bounded, token-safe).
+- `lib/drift-detect/collectors.js`: uses repo-map summaries/evidence when available; falls back to lightweight symbol scan.
+- `plugins/drift-detect/commands/drift-detect.md`: repo map optional flow
+  - If ast-grep exists, auto-init repo map.
+  - If missing, AskUserQuestion with 3 options: install+init now, user installs, or continue without map.
+- `plugins/drift-detect/skills/drift-analysis/references/data-contracts.md`: repo-map fields documented.
+- `plugins/drift-detect/agents/plan-synthesizer.md`: prefers repo-map evidence.
+- Tests: `__tests__/repo-map.test.js` includes repo-map helper coverage.
+- Dependency: `@modelcontextprotocol/sdk` added to make `__tests__/mcp-server.test.js` pass.
+
+Validation:
+- `npm install` + `npm test` pass (only warning: “fatal: not a git repository” from tests).
+
+### Next Steps
+1. Keep the PR scope strictly to drift-detect + repo-map usage changes.
+2. Run `/enhance` on modified command/agent/skill files before PR.
+3. Open PR from `skills-integration` once ready and rebase on `origin/main` if needed.

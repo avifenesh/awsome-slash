@@ -23,5 +23,9 @@ module.exports = {
   imports: [
     { pattern: 'import $SOURCE', sourceVar: 'SOURCE', kind: 'import' },
     { pattern: 'import $NAME $SOURCE', sourceVar: 'SOURCE', kind: 'import' }
+  ],
+  references: [
+    { pattern: '$NAME($$$)', nameVar: 'NAME', kind: 'call' },
+    { pattern: '$OBJ.$NAME($$$)', nameVar: 'NAME', kind: 'method' }
   ]
 };
