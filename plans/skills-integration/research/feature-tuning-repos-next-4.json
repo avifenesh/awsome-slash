@@ -1,0 +1,12 @@
+[
+  {"name":"facebook/react","language":"JavaScript"},
+  {"name":"webpack/webpack","language":"JavaScript"},
+  {"name":"expressjs/express","language":"JavaScript"},
+  {"name":"microsoft/TypeScript","language":"TypeScript"},
+  {"name":"vitejs/vite","language":"TypeScript"},
+  {"name":"fastapi/fastapi","language":"Python"},
+  {"name":"yt-dlp/yt-dlp","language":"Python"},
+  {"name":"minio/minio","language":"Go"},
+  {"name":"BurntSushi/ripgrep","language":"Rust"},
+  {"name":"elastic/elasticsearch","language":"Java"}
+]
