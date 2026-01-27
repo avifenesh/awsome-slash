@@ -862,7 +862,7 @@ All command names have been simplified for clarity:
   - `ci-fixer.md` (sonnet): Fix CI failures and PR comments, called by ci-monitor
   - `simple-fixer.md` (haiku): Execute pre-defined code fixes mechanically
 - **Workflow Enforcement Gates** - Explicit STOP gates in all agents
-  - Agents cannot skip review-orchestrator, delivery-validator, docs-updater
+  - Agents cannot skip Phase 9 review loop, delivery-validator, docs-updater
   - Agents cannot create PRs - only /ship creates PRs
   - SubagentStop hooks enforce mandatory workflow sequence
 - **State Schema Files**

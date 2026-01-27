@@ -531,7 +531,7 @@ OpenCode supports thinking/reasoning across **multiple providers** with differen
 **Via Plugin Hook (runtime):**
 ```typescript
 "chat.params": async (input, output) => {
-  if (input.agent === "review-orchestrator") {
+  if (input.agent === "planning-agent") {
     output.options.thinking = { type: "enabled", budgetTokens: 16000 }
   }
 }
@@ -662,7 +662,7 @@ export const WorkflowPlugin: Plugin = async (ctx) => {
 
     "chat.params": async (input, output) => {
       // Use higher reasoning for complex agents
-      if (["review-orchestrator", "planning-agent"].includes(input.agent)) {
+      if (["planning-agent", "implementation-agent"].includes(input.agent)) {
         output.options.thinking = { type: "enabled", budgetTokens: 16000 }
       }
     }
@@ -890,10 +890,6 @@ Add to user's `opencode.jsonc`:
     },
 
     // Complex agents - extended thinking
-    "review-orchestrator": {
-      "model": "anthropic/claude-sonnet-4",
-      "options": { "thinking": { "type": "enabled", "budgetTokens": 16000 } }
-    },
     "planning-agent": {
       "model": "anthropic/claude-sonnet-4",
       "options": { "thinking": { "type": "enabled", "budgetTokens": 16000 } }

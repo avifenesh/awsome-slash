@@ -10,7 +10,7 @@ Complete reference for all agents in awesome-slash.
 
 | Plugin | Agents | Jump to |
 |--------|--------|---------|
-| next-task | 13 | [task-discoverer](#task-discoverer), [worktree-manager](#worktree-manager), [exploration-agent](#exploration-agent), [planning-agent](#planning-agent), [implementation-agent](#implementation-agent), [deslop-work](#deslop-work), [test-coverage-checker](#test-coverage-checker), [review-orchestrator](#review-orchestrator), [delivery-validator](#delivery-validator), [docs-updater](#docs-updater), [simple-fixer](#simple-fixer), [ci-monitor](#ci-monitor), [ci-fixer](#ci-fixer) |
+| next-task | 12 | [task-discoverer](#task-discoverer), [worktree-manager](#worktree-manager), [exploration-agent](#exploration-agent), [planning-agent](#planning-agent), [implementation-agent](#implementation-agent), [deslop-work](#deslop-work), [test-coverage-checker](#test-coverage-checker), [delivery-validator](#delivery-validator), [docs-updater](#docs-updater), [simple-fixer](#simple-fixer), [ci-monitor](#ci-monitor), [ci-fixer](#ci-fixer) |
 | audit-project | 10 | [code-quality-reviewer](#code-quality-reviewer), [security-expert](#security-expert), [performance-engineer](#performance-engineer), [test-quality-guardian](#test-quality-guardian), [architecture-reviewer](#architecture-reviewer), [database-specialist](#database-specialist), [api-designer](#api-designer), [frontend-specialist](#frontend-specialist), [backend-specialist](#backend-specialist), [devops-reviewer](#devops-reviewer) |
 | enhance | 7 | [enhancement-orchestrator](#enhancement-orchestrator), [plugin-enhancer](#plugin-enhancer), [agent-enhancer](#agent-enhancer), [claudemd-enhancer](#claudemd-enhancer), [docs-enhancer](#docs-enhancer), [prompt-enhancer](#prompt-enhancer), [enhancement-reporter](#enhancement-reporter) |
 | drift-detect | 1 | [plan-synthesizer](#plan-synthesizer) |
@@ -197,39 +197,6 @@ awesome-slash uses 32 specialized agents across 5 plugins. Each agent is optimiz
 - Read, Grep, Glob
 
 **Advisory only:** Does not block workflow. Reports findings but continues.
-
----
-
-### review-orchestrator
-
-**Model:** opus
-**Purpose:** Coordinate multi-agent review until clean.
-
-**What it does:**
-1. Launches core review passes (parallel when nested subagents are supported; otherwise runs in-agent passes in series on Claude Code):
-   - Code quality (includes error handling)
-   - Security
-   - Performance
-   - Test coverage
-2. Adds conditional specialists (DB, architecture, API, frontend, backend, devops)
-3. Aggregates findings by severity
-4. Writes a review queue file in the platform state dir
-5. Fixes all non-false-positive issues
-6. Runs a deslop pass after each iteration (deslop-work when nested subagents are supported; inline slop scan on Claude Code)
-7. Loops until no open issues remain
-8. Stops early on iteration limit or stall and returns control for decision
-
-**Tools available:**
-- Task (only when nested subagents are supported)
-- Bash (git)
-- Read, Write, Edit
-
-**Restrictions:**
-- MUST NOT create PR
-- MUST NOT push
-- MUST NOT invoke delivery-validator
-
-**Why opus:** Review coordination requires judgment. Which findings are real? Which can be auto-fixed? How to prioritize? Opus handles this well.
 
 ---
 
@@ -666,7 +633,6 @@ Agents have restricted tool access for safety:
 | Agent | Restricted From | Why |
 |-------|-----------------|-----|
 | implementation-agent | PR creation, git push | Workflow enforces order |
-| review-orchestrator | PR creation, git push | Must complete review first |
 | delivery-validator | PR creation, git push | Must pass validation first |
 | worktree-manager | Most tools | Only needs git |
 | simple-fixer | Most tools | Only needs edit |

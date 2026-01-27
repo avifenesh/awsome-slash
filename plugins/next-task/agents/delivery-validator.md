@@ -396,7 +396,7 @@ This agent is called:
 ✓ implementation-agent completed
 ✓ deslop-work ran on new code
 ✓ test-coverage-checker ran (advisory)
-✓ review-orchestrator APPROVED (no open issues or override)
+✓ Phase 9 review loop APPROVED (no open issues or override)
 ```
 
 ### What This Agent MUST NOT Do
@@ -417,7 +417,7 @@ implementation-agent
         ↓
    Pre-review gates
         ↓
-review-orchestrator (MUST have approved)
+Phase 9 review loop (MUST have approved)
         ↓
 delivery-validator (YOU ARE HERE)
         ↓

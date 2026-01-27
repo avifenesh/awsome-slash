@@ -81,7 +81,7 @@ claude --plugin-dir /path/to/awesome-slash/plugins/next-task
 | exploration-agent | opus | Deep codebase analysis |
 | planning-agent | opus | Design implementation plans |
 | implementation-agent | opus | Execute plans with quality code |
-| review-orchestrator | opus | Multi-agent review iteration |
+| Phase 9 review loop | sonnet reviewers | Multi-pass review with parallel agents |
 | deslop-work | sonnet | Clean AI slop from changes |
 | test-coverage-checker | sonnet | Validate test coverage |
 | delivery-validator | sonnet | Autonomous delivery validation |
@@ -150,7 +150,7 @@ The native plugin (`~/.opencode/plugins/awesome-slash/`) provides deep integrati
 | Execution | 0 | worktree-manager, simple-fixer, ci-monitor |
 | Discovery | 8k | task-discoverer, docs-updater |
 | Analysis | 12k | exploration-agent, deslop-work, ci-fixer |
-| Reasoning | 16k | planning-agent, implementation-agent, review-orchestrator |
+| Reasoning | 16k | planning-agent, implementation-agent |
 | Synthesis | 20k | plan-synthesizer, enhancement-orchestrator |
 
 **Provider-Specific Thinking:**

@@ -149,7 +149,7 @@ Each analyzer generates a markdown report:
 
 Can be invoked by:
 - Direct command: `/enhance:*`
-- `review-orchestrator` during PR review
+- Phase 9 review loop during workflow
 - `delivery-validator` before shipping
 - Individual analysis workflows
 

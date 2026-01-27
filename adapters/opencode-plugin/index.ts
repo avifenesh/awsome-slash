@@ -34,7 +34,6 @@ const AGENT_THINKING_CONFIG: Record<string, { budget: number; description: strin
 
   // Reasoning tier - extended thinking (16k)
   "planning-agent": { budget: 16000, description: "Implementation planning" },
-  "review-orchestrator": { budget: 16000, description: "Multi-agent review coordination" },
   "delivery-validator": { budget: 16000, description: "Delivery validation" },
   "implementation-agent": { budget: 16000, description: "Code implementation" },
 

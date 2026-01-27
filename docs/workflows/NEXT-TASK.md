@@ -182,29 +182,29 @@ Both agents run in parallel:
 
 ### Phase 9: Review Loop
 
-**Agent:** review-orchestrator (opus)
+**Execution:** Inline in main orchestrator (uses orchestrate-review skill)
 **Human interaction: No**
 
-The agent:
-1. Launches core review passes (parallel when nested subagents are supported; otherwise runs in-agent passes in series on Claude Code):
-   - Code quality (includes error handling)
-   - Security
-   - Performance
-   - Test coverage
-2. Adds conditional specialists (DB, architecture, API, frontend, backend, devops)
-3. Aggregates findings by severity (critical/high/medium/low)
-4. Fixes all non-false-positive issues
-5. Writes a review queue file in the platform state dir
-6. **Runs a deslop pass after EACH iteration** (uses deslop-work where nested subagents are supported; inline slop scan on Claude Code)
-7. Repeats until no open issues remain
-8. Stops early if iteration limit or stall detected; control returns to /next-task for decision
+The orchestrator:
+1. Reads orchestrate-review skill for guidance
+2. Detects content signals (database, API, frontend, backend, devops, architecture)
+3. Spawns parallel Task agents (general-purpose, sonnet) - one per review pass:
+   - Core (always): code quality, security, performance, test coverage
+   - Conditional: database, architecture, api, frontend, backend, devops
+4. Aggregates findings by severity (critical/high/medium/low)
+5. Fixes all non-false-positive issues
+6. Commits fixes
+7. Runs deslop-work after each iteration
+8. Re-reviews changed files
+9. Repeats until no open issues remain
+10. Stops early if iteration limit or stall detected
 
 The loop continues until clean, but stops early if iteration limits or stall detection trigger.
 
 **Restrictions enforced:**
 - MUST NOT create PR
 - MUST NOT push to remote
-- MUST NOT invoke delivery-validator (handled by workflow)
+- MUST NOT skip review loop
 
 ---
 
@@ -318,7 +318,7 @@ A SubagentStop hook enforces the workflow sequence. When any agent completes, th
 
 **Enforced rules:**
 - Cannot skip deslop-work or test-coverage-checker
-- Cannot skip review-orchestrator
+- Cannot skip Phase 9 review loop
 - Cannot skip delivery-validator
 - Cannot skip docs-updater
 - Cannot create PR before `/ship` is invoked
@@ -330,7 +330,7 @@ A SubagentStop hook enforces the workflow sequence. When any agent completes, th
 
 | Model | Agents | Why |
 |-------|--------|-----|
-| **opus** | exploration-agent, planning-agent, implementation-agent, review-orchestrator | Complex reasoning, quality-critical phases |
+| **opus** | exploration-agent, planning-agent, implementation-agent | Complex reasoning, quality-critical phases |
 | **sonnet** | task-discoverer, deslop-work, test-coverage-checker, delivery-validator, docs-updater, ci-fixer | Moderate reasoning, structured tasks |
 | **haiku** | worktree-manager, simple-fixer, ci-monitor | Mechanical execution, no judgment needed |
 

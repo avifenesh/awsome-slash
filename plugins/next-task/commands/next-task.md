@@ -85,7 +85,7 @@ Implementation → Pre-Review Gates → Review Loop → Delivery Validation
 ║           ↓ MUST trigger                                                 ║
 ║  2. deslop-work + test-coverage-checker (parallel)                       ║
 ║           ↓ MUST trigger                                                 ║
-║  3. review-orchestrator (MUST approve - no open issues or override)      ║
+║  3. Phase 9 review loop (MUST approve - no open issues or override)      ║
 ║           ↓ MUST trigger (only if approved)                              ║
 ║  4. delivery-validator (MUST approve - tests pass, build passes)         ║
 ║           ↓ MUST trigger (only if approved)                              ║
@@ -97,7 +97,7 @@ Implementation → Pre-Review Gates → Review Loop → Delivery Validation
 ║                                                                          ║
 ║  ⛔ NO AGENT may create a PR - only /ship creates PRs                    ║
 ║  ⛔ NO AGENT may push to remote - only /ship pushes                      ║
-║  ⛔ NO AGENT may skip the review-orchestrator                            ║
+║  ⛔ NO AGENT may skip the Phase 9 review loop                            ║
 ║  ⛔ NO AGENT may skip the delivery-validator                             ║
 ║  ⛔ NO AGENT may skip the docs-updater                                   ║
 ║  ⛔ NO AGENT may skip workflow-status.json updates after each phase      ║
@@ -107,14 +107,14 @@ Implementation → Pre-Review Gates → Review Loop → Delivery Validation
 
 ## Review Decision Gate (Blocked/Resume)
 
-If `review-orchestrator` exits with `reviewResult.blocked: true`, the /next-task orchestrator MUST decide the next action (no user prompt).
+If Phase 9 review loop exits with `reviewResult.blocked: true`, the orchestrator MUST decide the next action (no user prompt).
 
 Use the review queue file (`flow.reviewQueue.path`) to inspect open items and their `pass` values.
 
 Decision rules:
-1. **If any open issue is critical/high OR any open issue is from security/performance/devops/database/api/backend/architecture** → re-run review-orchestrator with `--resume`.
+1. **If any open issue is critical/high OR any open issue is from security/performance/devops/database/api/backend/architecture** → re-run Phase 9 review loop.
 2. **If all open issues are medium/low and only code-quality/test-coverage** → you may override and continue if the issues are non-blocking.
-3. **If unclear** → re-run with `--resume`.
+3. **If unclear** → re-run Phase 9 review loop.
 
 When overriding, update flow:
 ```javascript
