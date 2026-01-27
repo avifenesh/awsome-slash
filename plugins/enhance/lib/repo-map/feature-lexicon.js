@@ -99,7 +99,15 @@ const TOKEN_ALIASES = {
   optimizations: ['optimization', 'optimize', 'optimise'],
   offline: ['service-worker', 'serviceworker', 'service_worker'],
   image: ['images'],
-  menus: ['menu']
+  menus: ['menu'],
+  compression: ['compress', 'compressor'],
+  compressing: ['compress'],
+  compressed: ['compress'],
+  cropping: ['crop'],
+  rotation: ['rotate', 'orientation'],
+  rotating: ['rotate'],
+  ratio: ['aspectratio'],
+  aspect: ['aspectratio']
 };
 
 module.exports = {

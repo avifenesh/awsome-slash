@@ -33,7 +33,7 @@ function isImplementedByFileMatches(fileMatches, feature) {
   if (!Array.isArray(fileMatches) || fileMatches.length === 0) return false;
   const nonTestMatches = fileMatches.filter(entry => entry.testOnly !== true);
   if (nonTestMatches.length === 0) return false;
-  if (nonTestMatches.some(entry => entry.kind === 'flag')) return true;
+  if (nonTestMatches.some(entry => entry.kind === 'flag' || entry.kind === 'text')) return true;
   if (feature?.hasNonGeneric) {
     return nonTestMatches.length >= 2;
   }
@@ -93,6 +93,12 @@ function findFeatureEvidence(basePath, features = [], options = {}) {
         const hintMatches = matchFeatureToFlagStrings(basePath, map, feature, opts);
         if (hintMatches.length > 0) {
           fileMatches = hintMatches;
+        }
+      }
+      if (fileMatches.length === 0 || fileMatches.every(entry => entry.testOnly)) {
+        const textMatches = matchFeatureToTextContent(basePath, map, feature, opts);
+        if (textMatches.length > 0) {
+          fileMatches = textMatches;
         }
       }
       if (fileMatches.length === 0 && opts.enablePathFallback) {
@@ -167,6 +173,12 @@ function findFeatureEvidence(basePath, features = [], options = {}) {
         const hintMatches = matchFeatureToFlagStrings(basePath, map, feature, opts);
         if (hintMatches.length > 0) {
           fileMatches = hintMatches;
+        }
+      }
+      if (fileMatches.length === 0 || fileMatches.every(entry => entry.testOnly)) {
+        const textMatches = matchFeatureToTextContent(basePath, map, feature, opts);
+        if (textMatches.length > 0) {
+          fileMatches = textMatches;
         }
       }
       if (fileMatches.length === 0 && opts.enablePathFallback) {
@@ -541,6 +553,8 @@ function isDocLikePath(filePath) {
   if (normalized.includes('/example/')) return true;
   if (normalized.includes('/samples/')) return true;
   if (normalized.includes('/sample/')) return true;
+  if (normalized.includes('/demos/') || normalized.startsWith('demos/')) return true;
+  if (normalized.includes('/demo/') || normalized.startsWith('demo/')) return true;
   if (normalized.includes('/guides/')) return true;
   if (normalized.includes('/guide/')) return true;
   return false;
@@ -652,6 +666,56 @@ function expandFlagVariants(flag) {
   variants.add(base.replace(/-/g, '_'));
   variants.add(base.replace(/-/g, ''));
   return Array.from(variants);
+}
+
+function matchFeatureToTextContent(basePath, map, feature, options) {
+  const tokens = feature?.tokens || [];
+  if (tokens.length === 0) return [];
+  const limit = Number(options?.maxDefsPerFeature) || DEFAULT_OPTIONS.maxDefsPerFeature;
+  const maxFiles = Number(options?.maxPathScanFiles) || DEFAULT_OPTIONS.maxPathScanFiles;
+  const excludes = new Set(['image', 'images', 'file', 'files', 'data', 'client', 'server', 'issue', 'issues']);
+  const candidates = tokens.filter(token => token.length >= 6 && !GENERIC_TOKENS.has(token) && !excludes.has(token));
+  if (candidates.length === 0) return [];
+
+  const files = Object.keys(map.files || {}).slice(0, maxFiles);
+  const matches = [];
+  const testMatches = [];
+
+  for (const file of files) {
+    if (matches.length >= limit) break;
+    if (isDocLikePath(file)) continue;
+    const fullPath = path.join(basePath, file);
+    let content;
+    try {
+      const stat = fs.statSync(fullPath);
+      if (stat.size > 512 * 1024) continue;
+      content = fs.readFileSync(fullPath, 'utf8');
+    } catch {
+      continue;
+    }
+    const lower = content.toLowerCase();
+    const matched = [];
+    for (const token of candidates) {
+      if (lower.includes(token)) matched.push(token);
+    }
+    if (matched.length === 0) continue;
+    const strongHit = matched.some(token => token.length >= 8);
+    if (!strongHit && matched.length < 2) continue;
+    const entry = {
+      file,
+      name: matched[0],
+      kind: 'text',
+      score: matched.length + (strongHit ? 1 : 0)
+    };
+    if (isTestFile(file)) {
+      testMatches.push(entry);
+    } else {
+      matches.push(entry);
+    }
+  }
+
+  if (matches.length > 0) return matches.slice(0, limit);
+  return testMatches.slice(0, limit).map(entry => ({ ...entry, testOnly: true }));
 }
 
 function matchFeatureToFlagStrings(basePath, map, feature, options) {

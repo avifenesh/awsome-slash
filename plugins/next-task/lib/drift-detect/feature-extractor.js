@@ -315,6 +315,7 @@ function extractFeaturesFromContent(content, filePath, options) {
         if (modeFeature && labeled && isLowSignalText(normalizeText(labeled))) {
           candidate = modeFeature;
         }
+        candidate = stripLeadingVerb(candidate);
         if (isCodePathCandidate(candidate)) continue;
         if (isExampleLine(line, candidate)) continue;
         if (isFormulaLine(line, candidate)) continue;
@@ -449,6 +450,7 @@ function extractFeaturesFromContent(content, filePath, options) {
         if (modeFeature && labeled && isLowSignalText(normalizeText(labeled))) {
           candidate = modeFeature;
         }
+        candidate = stripLeadingVerb(candidate);
         if (isCodePathCandidate(candidate)) continue;
         if (isExampleLine(line, candidate)) continue;
         if (isFormulaLine(line, candidate)) continue;
@@ -806,6 +808,10 @@ function cleanupFeatureText(text) {
   }
 
   return cleaned;
+}
+
+function stripLeadingVerb(text) {
+  return String(text || '').replace(/^(supports?|includes?|provides?|enables?|allows?)\s+/i, '').trim();
 }
 
 function isGenericProductDescription(text) {
