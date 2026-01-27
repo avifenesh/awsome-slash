@@ -13,6 +13,7 @@ Multi-pass code review with parallel Task agents, finding aggregation, and itera
 ## Scope-Based Specialist Selection
 
 Select conditional specialists based on the review scope:
+- **User request**: Detect signals from content user refers to (files, directory, module)
 - **Workflow (Phase 9)**: Detect signals from changed files only
 - **Project audit**: Detect signals from project structure as a whole
 
