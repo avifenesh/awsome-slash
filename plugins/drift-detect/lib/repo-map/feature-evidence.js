@@ -28,6 +28,20 @@ const DEFAULT_OPTIONS = {
   maxFallbackFiles: 6000
 };
 
+const STRONG_PATH_HINTS = [
+  '/module/',
+  '/starter/',
+  '/starter-',
+  '/core/',
+  '/loader/',
+  '/configuration/',
+  '/autoconfigure/',
+  '/auto-configuration/',
+  '/actuator/',
+  '/metrics/',
+  '/security/'
+];
+
 function findFeatureEvidence(basePath, features = [], options = {}) {
   const map = cache.load(basePath);
   if (!map) {
@@ -90,11 +104,12 @@ function findFeatureEvidence(basePath, features = [], options = {}) {
         });
         continue;
       }
+      const fileEvidence = evaluateFileEvidence(feature, fileMatches);
       results.push({
         feature: feature.original,
         normalized: feature.normalized,
         tokens: feature.tokens,
-        status: 'partial',
+        status: fileEvidence.implemented ? 'implemented' : 'partial',
         defs: fileMatches.map(entry => ({
           file: entry.file,
           name: entry.name,
@@ -435,6 +450,26 @@ function matchFeatureToFiles(feature, map, limit) {
   });
 
   return matches.slice(0, limit);
+}
+
+function evaluateFileEvidence(feature, fileMatches) {
+  const matches = Array.isArray(fileMatches) ? fileMatches : [];
+  if (matches.length === 0) return { implemented: false };
+  const nonGeneric = (feature?.tokens || []).filter(token => !GENERIC_TOKENS.has(token));
+  const strongMatches = matches.filter(entry => isStrongPath(entry.file));
+
+  if (strongMatches.length >= 2) return { implemented: true };
+  if (strongMatches.length >= 1 && nonGeneric.length > 0) return { implemented: true };
+  if (matches.length >= 4 && nonGeneric.length > 0) return { implemented: true };
+  if (matches.length >= 6 && nonGeneric.length === 0) return { implemented: true };
+
+  return { implemented: false };
+}
+
+function isStrongPath(filePath) {
+  if (!filePath) return false;
+  const normalized = `/${String(filePath).replace(/\\/g, '/').toLowerCase()}`;
+  return STRONG_PATH_HINTS.some(hint => normalized.includes(hint));
 }
 
 function matchFeatureToFileList(feature, files, limit) {

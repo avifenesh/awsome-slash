@@ -45,7 +45,12 @@ const LOW_SIGNAL_EXACT = new Set([
   'experimental', 'example', 'related',
   'location', 'filename', 'reviewed',
   'short', 'tested', 'protip',
-  'format', 'important'
+  'format', 'important',
+  'performance', 'reliability', 'high availability',
+  'stability', 'fault tolerance', 'stability and fault tolerance',
+  'community and open source',
+  'backed and supported by aws and gcp',
+  'backed and supported'
 ]);
 
 const LOW_SIGNAL_PREFIXES = [
