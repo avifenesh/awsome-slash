@@ -225,6 +225,7 @@ function tokenize(text) {
 function expandTokens(tokens) {
   const output = [];
   const seen = new Set();
+  const aliasLists = new Map();
   const addToken = (token) => {
     const value = String(token || '').trim();
     if (!value || (value.length < 3 && !isShortCodeToken(value))) return;
@@ -233,14 +234,33 @@ function expandTokens(tokens) {
     seen.add(value);
     output.push(value);
   };
+  const collectAliases = (token) => {
+    if (!token) return [];
+    if (aliasLists.has(token)) return aliasLists.get(token);
+    let aliases = [];
+    if (Object.prototype.hasOwnProperty.call(TOKEN_ALIASES, token)) {
+      const value = TOKEN_ALIASES[token];
+      if (Array.isArray(value)) {
+        aliases = value;
+      } else if (typeof value === 'string') {
+        aliases = [value];
+      }
+    }
+    aliasLists.set(token, aliases);
+    return aliases;
+  };
 
   for (const raw of Array.isArray(tokens) ? tokens : []) {
     const token = String(raw || '').trim();
     if (!token) continue;
     const base = singularizeToken(token);
     addToken(base);
-    const aliases = TOKEN_ALIASES[base] || TOKEN_ALIASES[token] || [];
-    for (const alias of aliases) {
+    const aliasSet = new Set();
+    for (const alias of collectAliases(base)) aliasSet.add(alias);
+    if (base !== token) {
+      for (const alias of collectAliases(token)) aliasSet.add(alias);
+    }
+    for (const alias of aliasSet) {
       addToken(alias);
     }
   }
