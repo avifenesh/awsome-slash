@@ -5,18 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.2.0-rc.1] - 2026-01-27
 
 ### Added
 - **Repo Map Plugin** - AST-based repository map generation using ast-grep with incremental updates and cached symbol/import maps
 - **/repo-map Command** - Initialize, update, and check status of repo maps (with optional docs analysis)
 - **repo_map MCP Tool** - Cross-platform repo-map generation via MCP
 - **map-validator Agent** - Lightweight validation of repo-map output
+- **orchestrate-review Skill** - New skill providing review pass definitions, signal detection patterns, and iteration algorithms for Phase 9 review loop
 
 ### Changed
 - **/ship** - Automatically updates repo-map after merge when a map exists
 - **/drift-detect** - Suggests repo-map init/update when missing or stale
 - **Workflow Agents** - Exploration, planning, and implementation agents check for repo-map if available
+- **Phase 9 Review Loop** - Now uses orchestrate-review skill with parallel Task agents instead of nested review-orchestrator agent
+  - Resolves Claude Code nested subagent limitations
+  - Spawns parallel reviewers (code-quality, security, performance, test-coverage + conditional specialists)
+  - Scope-based specialist selection: user request, workflow, or project audit
+- **Agent Count** - Reduced from 32 to 31 agents (removed review-orchestrator)
+
+### Removed
+- **review-orchestrator Agent** - Replaced by orchestrate-review skill for better cross-platform compatibility
+
+### Fixed
+- **MCP SDK Dependency** - Added @modelcontextprotocol/sdk as dev dependency for MCP server tests
 
 ## [3.1.0] - 2026-01-26
 
