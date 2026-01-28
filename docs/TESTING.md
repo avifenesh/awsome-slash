@@ -36,7 +36,7 @@ claude plugin add npm:awesome-slash
 ### Platform Detection
 
 ```bash
-node /path/to/awesome-slash/lib/platform/detect-platform.js
+npm run detect
 ```
 
 **Expected fields**:
@@ -53,7 +53,7 @@ node /path/to/awesome-slash/lib/platform/detect-platform.js
 ### Tool Verification
 
 ```bash
-node /path/to/awesome-slash/lib/platform/verify-tools.js
+npm run verify
 ```
 
 **Validation**:
@@ -257,7 +257,7 @@ gh auth status
 
 ```bash
 cd /path/to/awesome-slash
-node /full/path/to/awesome-slash/lib/platform/detect-platform.js
+npm run detect
 ```
 
 ### Commands not showing in Claude Code

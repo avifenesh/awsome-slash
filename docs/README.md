@@ -70,6 +70,10 @@ AI models can write code. The bottleneck is everything else—picking tasks, man
 | `/enhance` | Analyze prompts, plugins, docs |
 | `/sync-docs` | Sync docs with code changes |
 
+### Internal Skills
+
+- `orchestrate-review` â€” Defines review passes and signal thresholds for the Phase 9 review loop
+
 ### State Files
 
 | File | Location | Purpose |
@@ -102,6 +106,15 @@ State directories by platform:
 | LOW | Possible problem | No |
 
 ---
+
+## Diagnostics Scripts
+
+When working in the repo directly, you can sanity-check detection and tooling:
+
+```bash
+npm run detect   # Platform detection (CI, deploy, project type)
+npm run verify   # Tool availability + versions
+```
 
 ## Getting Help
 

@@ -128,6 +128,15 @@ You should see commands:
 Type the command name and it should be recognized:
 - `/next-task` (OpenCode) or `$next-task` (Codex)
 
+### Local Repo Diagnostics (optional)
+
+If you're running from the repo, you can verify platform detection and tool availability:
+
+```bash
+npm run detect   # Platform detection (CI, deploy, project type)
+npm run verify   # Tool availability + versions
+```
+
 ---
 
 ## Prerequisites
@@ -141,12 +150,9 @@ Type the command name and it should be recognized:
 
 - **Node.js 18+** - For library functions
 
-### Optional
+### Recommended (Repo Map)
 
-- **ast-grep (`sg`)** - Required for `/repo-map` (install when prompted)
-  ```bash
-  node --version
-  ```
+- **ast-grep (`sg`)** - Required for `/repo-map` generation. Install upfront for the best experience.
 
 ### Required for GitHub Workflows
 

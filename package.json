@@ -1,7 +1,7 @@
 {
   "name": "awesome-slash",
   "version": "3.2.1",
-  "description": "6 specialized plugins for AI workflow automation - works with Claude Code, OpenCode, and Codex CLI",
+  "description": "8 specialized plugins for AI workflow automation (drift detection + AST repo maps) - works with Claude Code, OpenCode, and Codex CLI",
   "main": "lib/platform/detect-platform.js",
   "type": "commonjs",
   "bin": {
@@ -43,7 +43,10 @@
     "multi-agent",
     "cli",
     "pr-automation",
-    "productivity"
+    "productivity",
+    "repo-map",
+    "ast-grep",
+    "drift-detect"
   ],
   "author": {
     "name": "Avi Fenesh",

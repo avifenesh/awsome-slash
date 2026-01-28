@@ -228,6 +228,8 @@ With proper workflow structure, context management, and quality gates, AI agents
 11. **Docs Update** - Updates CHANGELOG and related documentation
 12. **Ship** - Creates PR, monitors CI, addresses comments, merges
 
+Phase 9 uses the `orchestrate-review` skill to define review passes and signal thresholds.
+
 **Agents involved:**
 
 | Agent | Model | Role |
@@ -433,6 +435,8 @@ Multi-agent collection wastes tokens on coordination. JavaScript collectors are 
 - Import graph for dependency hints
 - Optional docs analysis (features, checkboxes)
 
+Output is cached at `{state-dir}/repo-map.json` and exposed via the MCP `repo_map` tool.
+
 **Why it matters:**
 
 Tools like `/drift-detect` and planners can use the map instead of re-scanning the repo every time.
@@ -445,7 +449,7 @@ Tools like `/drift-detect` and planners can use the map instead of re-scanning t
 /repo-map status      # Check freshness
 ```
 
-**Prerequisite:** Install ast-grep (`sg`) when prompted.
+**Recommended:** Install ast-grep (`sg`) before using `/repo-map` for fastest setup. It is required for repo-map generation.
 
 ---
 
@@ -597,6 +601,15 @@ Interactive installer for Claude Code, OpenCode, and Codex CLI.
 
 **For GitLab workflows:**
 - GitLab CLI (`glab`) authenticated
+
+**Recommended for repo-map:**
+- ast-grep (`sg`) installed (required for `/repo-map` generation)
+
+**Local diagnostics (optional):**
+```bash
+npm run detect   # Platform detection (CI, deploy, project type)
+npm run verify   # Tool availability + versions
+```
 
 ---
 

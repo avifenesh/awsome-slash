@@ -128,6 +128,8 @@ Complete task-to-production automation with state management.
 11. Docs Update → Sync documentation
 12. Ship → Create PR, monitor CI, address comments, merge
 
+Phase 9 uses the `orchestrate-review` skill to define review passes and signal thresholds.
+
 [Full workflow documentation →](./workflows/NEXT-TASK.md)
 
 ---
@@ -515,6 +517,15 @@ Your code is cleaned, reviewed, and deployed!
 ```
 
 ---
+
+## Diagnostics (Local)
+
+When working in this repo directly, you can sanity-check detection and tooling:
+
+```bash
+npm run detect   # Platform detection (CI, deploy, project type)
+npm run verify   # Tool availability + versions
+```
 
 ## What Makes This Plugin Special
 

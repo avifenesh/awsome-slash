@@ -162,7 +162,7 @@ awesome-slash  # Select option 2
 - Config: `~/.config/opencode/opencode.json`
 - Commands: `~/.opencode/commands/awesome-slash/`
 
-**Commands:** `/next-task`, `/ship`, `/deslop`, `/audit-project`, `/drift-detect-scan`, `/repo-map`, `/enhance`, `/sync-docs`
+**Commands:** `/next-task`, `/ship`, `/deslop`, `/audit-project`, `/drift-detect`, `/repo-map`, `/enhance`, `/sync-docs`
 
 **MCP Config Added:**
 ```json
@@ -190,7 +190,9 @@ awesome-slash  # Select option 3
 - Config: `~/.codex/config.toml`
 - Skills: `~/.codex/skills/`
 
-**Skills:** `$next-task`, `$ship`, `$deslop`, `$audit-project`, `$drift-detect-scan`, `$repo-map`, `$enhance`, `$sync-docs`
+**Skills:** `$next-task`, `$ship`, `$deslop`, `$audit-project`, `$drift-detect`, `$repo-map`, `$enhance`, `$sync-docs`
+
+**Internal skill:** `orchestrate-review` (Phase 9 review pass definitions used by /next-task and /audit-project)
 
 Note: Codex uses `$` prefix instead of `/`.
 
