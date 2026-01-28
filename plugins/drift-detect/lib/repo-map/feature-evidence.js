@@ -28,16 +28,32 @@ const DEFAULT_OPTIONS = {
 };
 
 const ALIAS_ROOTS = buildAliasRoots();
+const FEATURE_DIR_HINTS = [
+  '/commands/',
+  '/command/',
+  '/cmd/',
+  '/modules/',
+  '/module/',
+  '/features/',
+  '/feature/'
+];
 
 function isImplementedByFileMatches(fileMatches, feature) {
   if (!Array.isArray(fileMatches) || fileMatches.length === 0) return false;
   const nonTestMatches = fileMatches.filter(entry => entry.testOnly !== true);
   if (nonTestMatches.length === 0) return false;
   if (nonTestMatches.some(entry => entry.kind === 'flag' || entry.kind === 'text')) return true;
+  if (nonTestMatches.some(entry => entry.kind === 'file' && entry.score >= 3)) return true;
+  if (nonTestMatches.some(entry => entry.kind === 'file' && entry.score >= 2 && isFeatureDirPath(entry.file))) return true;
   if (feature?.hasNonGeneric) {
     return nonTestMatches.length >= 2;
   }
   return nonTestMatches.length >= 4;
+}
+
+function isFeatureDirPath(filePath) {
+  const normalized = `/${String(filePath || '').replace(/\\/g, '/').toLowerCase()}`;
+  return FEATURE_DIR_HINTS.some(dir => normalized.includes(dir));
 }
 
 

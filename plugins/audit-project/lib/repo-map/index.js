@@ -140,6 +140,13 @@ async function update(basePath, options = {}) {
     return init(basePath, { force: true });
   }
 
+  const detectedLanguages = await runner.detectLanguages(basePath);
+  const existingLanguages = new Set(existing.project?.languages || []);
+  const missingLanguages = detectedLanguages.filter(lang => !existingLanguages.has(lang));
+  if (missingLanguages.length > 0) {
+    return init(basePath, { force: true, languages: detectedLanguages });
+  }
+
   // Incremental update
   const result = await updater.incrementalUpdate(basePath, existing);
   
