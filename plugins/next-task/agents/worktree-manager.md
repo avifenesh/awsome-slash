@@ -271,7 +271,7 @@ createWorktreeStatus(state.task, state.workflow, BRANCH_NAME, MAIN_REPO_PATH);
 Update the workflow state with git information:
 
 ```javascript
-const workflowState = require('${CLAUDE_PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/state/workflow-state.js');
+const workflowState = require('${PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/state/workflow-state.js');
 
 workflowState.updateState({
   git: {
@@ -301,6 +301,23 @@ Report the worktree setup:
 **Branch**: ${BRANCH_NAME}
 **Path**: ${WORKTREE_PATH}
 **Base**: ${ORIGINAL_BRANCH} @ ${BASE_SHA}
+
+Working directory is now anchored to the worktree.
+All subsequent operations will occur in isolated environment.
+
+Proceeding to exploration phase...
+```
+
+## Output Format
+
+Return the summary exactly in this format:
+
+```markdown
+## Worktree Setup Complete
+
+**Branch**: <branch>
+**Path**: <worktree-path>
+**Base**: <base-branch> @ <base-sha>
 
 Working directory is now anchored to the worktree.
 All subsequent operations will occur in isolated environment.
@@ -429,3 +446,4 @@ This agent uses **haiku** because:
 - No complex reasoning about code or architecture
 - Simple string manipulation for slugs/paths
 - Fast execution for setup operations
+

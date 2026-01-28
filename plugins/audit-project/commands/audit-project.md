@@ -38,8 +38,8 @@ Otherwise create a new queue file. See `audit-project-agents.md` for queue handl
 ### Platform Detection
 
 ```bash
-PLATFORM=$(node ${CLAUDE_PLUGIN_ROOT}/lib/platform/detect-platform.js)
-TOOLS=$(node ${CLAUDE_PLUGIN_ROOT}/lib/platform/verify-tools.js)
+PLATFORM=$(node ${PLUGIN_ROOT}/lib/platform/detect-platform.js)
+TOOLS=$(node ${PLUGIN_ROOT}/lib/platform/verify-tools.js)
 
 PROJECT_TYPE=$(echo $PLATFORM | jq -r '.projectType')
 PACKAGE_MGR=$(echo $PLATFORM | jq -r '.packageManager')
@@ -331,3 +331,4 @@ Try: --recent or specific path for smaller scope.
 - ✓ TECHNICAL_DEBT.md updated (if enabled)
 
 Begin Phase 1 now.
+

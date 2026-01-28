@@ -30,7 +30,7 @@ Create a temporary review queue file in the platform state dir. Review passes ap
 ```javascript
 const path = require('path');
 const fs = require('fs');
-const { getStateDirPath } = require('${CLAUDE_PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/platform/state-dir.js');
+const { getStateDirPath } = require('${PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/platform/state-dir.js');
 
 const stateDirPath = getStateDirPath(process.cwd());
 if (!fs.existsSync(stateDirPath)) {
@@ -446,3 +446,4 @@ Findings:
 1. src/api/users.ts: 5 issues
 2. src/auth/session.ts: 3 issues
 ```
+

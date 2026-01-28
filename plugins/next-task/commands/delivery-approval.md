@@ -27,7 +27,7 @@ const taskId = taskIdArg ? args[args.indexOf(taskIdArg) + 1] : null;
 ## Phase 1: Get Context
 
 ```javascript
-const workflowState = require('${CLAUDE_PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/state/workflow-state.js');
+const workflowState = require('${PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/state/workflow-state.js');
 
 let task;
 let changedFiles;
@@ -329,3 +329,4 @@ When called standalone:
 - Provides clear pass/fail determination
 - Shows actionable fixes for failures
 - Works both standalone and in workflow context
+

@@ -2547,6 +2547,10 @@ function shouldIncludePlanItem(text) {
   if (/^create\s+`?references?\//.test(normalized)) return false;
   if (/^create\s+`?docs?\//.test(normalized)) return false;
   if (/\bunder\s+\d+\s+lines\b/.test(normalized)) return false;
+  if (/^trim\s+to\b/.test(normalized)) return false;
+  if (/^add\s+references?\s+section\b/.test(normalized)) return false;
+  if (/^verify\s+under\s+\d+/.test(normalized)) return false;
+  if (/^remove\s+content\b/.test(normalized)) return false;
   if (/^no\s+time-sensitive\b/.test(normalized)) return false;
   if (/^consistent\s+terminology\b/.test(normalized)) return false;
   if (/^examples?\s+are\b/.test(normalized)) return false;

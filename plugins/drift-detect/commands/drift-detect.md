@@ -27,7 +27,7 @@ Parse from $ARGUMENTS:
 ## Phase 1: Parse Arguments and Collect Data
 
 ```javascript
-const pluginPath = '${CLAUDE_PLUGIN_ROOT}'.replace(/\\/g, '/');
+const pluginPath = '${PLUGIN_ROOT}'.replace(/\\/g, '/');
 const collectors = require(`${pluginPath}/lib/drift-detect/collectors.js`);
 const repoMap = require(`${pluginPath}/lib/repo-map`);
 const { sources } = require(`${pluginPath}/lib`);
@@ -239,3 +239,4 @@ console.log(`\n## Reality Check Complete\n\nRun \`/drift-detect --depth quick\` 
 | --file | path | drift-detect-report.md |
 
 Begin scan now.
+

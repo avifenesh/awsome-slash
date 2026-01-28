@@ -195,7 +195,7 @@ Generate a structured markdown report:
 ## Implementation
 
 ```javascript
-const { projectmemoryAnalyzer } = require('${CLAUDE_PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/enhance');
+const { projectmemoryAnalyzer } = require('${PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/enhance');
 
 // Find and analyze project memory
 const results = await projectmemoryAnalyzer.analyze(projectPath, {
@@ -286,3 +286,4 @@ Uses **opus** model because:
 - Nuanced judgment needed for efficiency suggestions
 - Cross-platform implications require reasoning
 - Imperfect analysis multiplies across every session
+

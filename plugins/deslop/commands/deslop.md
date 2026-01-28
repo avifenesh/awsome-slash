@@ -81,13 +81,13 @@ For **diff-based cleanup** of new work only, use the `deslop-work` agent via `/n
 Run the detection script to scan for slop patterns:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/detect.js" <scope> --compact
+node "${PLUGIN_ROOT}/scripts/detect.js" <scope> --compact
 ```
 
 For deep analysis with all multi-pass analyzers:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/detect.js" <scope> --deep --compact
+node "${PLUGIN_ROOT}/scripts/detect.js" <scope> --deep --compact
 ```
 
 Parse the output to identify top 10 hotspots, sorted by:
@@ -109,7 +109,7 @@ Present findings as a prioritized cleanup plan:
 Run detection with apply flag for auto-fixable patterns:
 
 ```bash
-node "${CLAUDE_PLUGIN_ROOT}/scripts/detect.js" <scope> --apply --max <max-changes> --compact
+node "${PLUGIN_ROOT}/scripts/detect.js" <scope> --apply --max <max-changes> --compact
 ```
 
 Then implement remaining manual fixes one changeset at a time:
@@ -162,3 +162,4 @@ For detailed pattern documentation, consult:
 ### Scripts
 
 - **`scripts/detect.js`** - Detection pipeline CLI (run with `--help` for options)
+

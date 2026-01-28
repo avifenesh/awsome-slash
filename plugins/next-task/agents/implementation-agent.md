@@ -44,7 +44,7 @@ Before implementation:
 ## Phase 1: Load Approved Plan
 
 ```javascript
-const workflowState = require('${CLAUDE_PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/state/workflow-state.js');
+const workflowState = require('${PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/state/workflow-state.js');
 const state = workflowState.readFlow();
 
 if (!state.plan?.approved) {
@@ -59,7 +59,7 @@ console.log(`Steps: ${plan.steps.length}`);
 ## Phase 1.5: Use Repo Map for Symbol Locations (If Available)
 
 ```javascript
-const repoMap = require('${CLAUDE_PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/repo-map');
+const repoMap = require('${PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/repo-map');
 const map = repoMap.load(process.cwd());
 
 if (map) {
@@ -437,3 +437,4 @@ This agent uses **opus** because:
 - Must follow existing patterns accurately
 - Error handling and edge cases need careful reasoning
 - Most impactful phase - mistakes here are costly
+

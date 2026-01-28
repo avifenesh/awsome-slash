@@ -105,3 +105,13 @@ Complex reasoning required:
 - Prioritization explains reasoning
 - Quick wins are genuinely quick
 </success-criteria>
+
+## Output Format
+
+Return a markdown report that follows the **Reality Check Report** template in
+`references/output-templates.md`. At minimum, include:
+
+- Executive summary
+- Drift findings grouped by category (Documented-not-implemented, Implemented-not-documented, Partial, Aligned)
+- Evidence per claim (doc + code, or explicit absence)
+- Prioritized actions with references

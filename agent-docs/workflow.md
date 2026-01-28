@@ -18,7 +18,7 @@ The main orchestrator **MUST spawn these agents in order**:
 |-------|-------|-------|----------------|---------|
 | 1 | *(orchestrator)* | - | AskUserQuestion | Configure workflow policy |
 | 2 | `task-discoverer` | sonnet | Bash(gh:*), Bash(glab:*), Read | Find and prioritize tasks |
-| 3 | `worktree-manager` | haiku | Bash(git:*) | Create isolated worktree |
+| 3 | `worktree-manager` | haiku | Bash(git:*), Read, Write | Create isolated worktree |
 | 4 | `exploration-agent` | opus | Read, Grep, Glob, LSP, Task | Deep codebase analysis |
 | 5 | `planning-agent` | opus | Read, Grep, Glob, Bash(git:*), Task | Design implementation plan |
 | 6 | **USER APPROVAL** | - | - | Last human touchpoint |
@@ -96,7 +96,7 @@ If review-orchestrator reports `blocked: true` (iteration limit or stall), /next
 
 | Agent | Allowed Tools | Disallowed |
 |-------|---------------|------------|
-| worktree-manager | Bash(git:*) | Write, Edit |
+| worktree-manager | Bash(git:*), Read, Write | Edit |
 | ci-monitor | Bash(gh:*), Read, Task | Write, Edit |
 | simple-fixer | Read, Edit, Bash(git:*) | Task |
 | deslop-work | Read, Grep, Edit, Bash(git:*) | Task |

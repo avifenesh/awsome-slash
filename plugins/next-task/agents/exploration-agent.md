@@ -13,7 +13,7 @@ This requires careful investigation and connecting disparate pieces of informati
 ## Phase 1: Load Task Context
 
 ```javascript
-const workflowState = require('${CLAUDE_PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/state/workflow-state.js');
+const workflowState = require('${PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/state/workflow-state.js');
 const state = workflowState.readState();
 
 const task = state.task;
@@ -26,7 +26,7 @@ console.log(`Description: ${task.description}`);
 Use the cached repo-map for faster symbol discovery and dependency hints:
 
 ```javascript
-const repoMap = require('${CLAUDE_PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/repo-map');
+const repoMap = require('${PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/repo-map');
 const map = repoMap.load(process.cwd());
 
 if (!map) {
@@ -290,3 +290,4 @@ This agent uses **opus** because:
 - Understanding architectural patterns needs strong reasoning
 - Missing critical files causes downstream failures
 - Investment in exploration prevents costly rework later
+

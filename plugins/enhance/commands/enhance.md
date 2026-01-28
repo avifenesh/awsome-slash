@@ -126,7 +126,7 @@ Parse from $ARGUMENTS:
 ## Workflow
 
 1. **Discover plugins** - Find all plugins in `plugins/` directory
-2. **Load patterns** - Import from `${CLAUDE_PLUGIN_ROOT}/lib/enhance/`
+2. **Load patterns** - Import from `${PLUGIN_ROOT}/lib/enhance/`
 3. **Analyze each plugin**:
    - Validate plugin.json structure
    - Check MCP tool definitions
@@ -181,7 +181,7 @@ Parse from $ARGUMENTS:
 ## Implementation
 
 ```javascript
-const { pluginAnalyzer } = require('${CLAUDE_PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/enhance');
+const { pluginAnalyzer } = require('${PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/enhance');
 
 // Parse arguments
 const args = '$ARGUMENTS'.split(' ').filter(Boolean);
@@ -230,7 +230,7 @@ Parse from $ARGUMENTS:
 ## Workflow
 
 1. **Discover agents** - Find all .md files in agents directory
-2. **Load patterns** - Import from `${CLAUDE_PLUGIN_ROOT}/lib/enhance/agent-patterns`
+2. **Load patterns** - Import from `${PLUGIN_ROOT}/lib/enhance/agent-patterns`
 3. **Analyze each agent**:
    - Parse YAML frontmatter
    - Check structure (role, output format, constraints)
@@ -319,7 +319,7 @@ Parse from $ARGUMENTS:
 ## Implementation
 
 ```javascript
-const { agentAnalyzer } = require('${CLAUDE_PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/enhance');
+const { agentAnalyzer } = require('${PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/enhance');
 
 // Parse arguments
 const args = '$ARGUMENTS'.split(' ').filter(Boolean);
@@ -416,7 +416,7 @@ For user-facing documentation:
 ## Workflow
 
 1. **Discover docs** - Find all .md files in target directory
-2. **Load patterns** - Import from `${CLAUDE_PLUGIN_ROOT}/lib/enhance/docs-patterns`
+2. **Load patterns** - Import from `${PLUGIN_ROOT}/lib/enhance/docs-patterns`
 3. **Analyze each doc**:
    - Validate structure (headings, links, code blocks)
    - Check for RAG-friendly chunking (AI mode)
@@ -500,7 +500,7 @@ For user-facing documentation:
 ## Implementation
 
 ```javascript
-const { docsAnalyzer } = require('${CLAUDE_PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/enhance');
+const { docsAnalyzer } = require('${PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/enhance');
 
 // Parse arguments
 const args = '$ARGUMENTS'.split(' ').filter(Boolean);
@@ -587,7 +587,7 @@ Note: Reference validation (file paths, npm commands) is always enabled.
 ## Workflow
 
 1. **Find file** - Locate CLAUDE.md or AGENTS.md
-2. **Load patterns** - Import from `${CLAUDE_PLUGIN_ROOT}/lib/enhance/projectmemory-patterns`
+2. **Load patterns** - Import from `${PLUGIN_ROOT}/lib/enhance/projectmemory-patterns`
 3. **Analyze structure**:
    - Check for critical rules section
    - Verify architecture/structure section
@@ -695,7 +695,7 @@ Note: Reference validation (file paths, npm commands) is always enabled.
 ## Implementation
 
 ```javascript
-const { projectmemoryAnalyzer } = require('${CLAUDE_PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/enhance');
+const { projectmemoryAnalyzer } = require('${PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/enhance');
 
 // Parse arguments
 const args = '$ARGUMENTS'.split(' ').filter(Boolean);
@@ -778,7 +778,7 @@ Parse from $ARGUMENTS:
 
 1. **Discover prompts** - Find all .md and .txt files in target
 2. **Classify** - Detect prompt type from path/content
-3. **Load patterns** - Import from `${CLAUDE_PLUGIN_ROOT}/lib/enhance/prompt-patterns`
+3. **Load patterns** - Import from `${PLUGIN_ROOT}/lib/enhance/prompt-patterns`
 4. **Analyze each prompt**:
    - Check clarity (vague language, negative-only constraints)
    - Validate structure (XML tags, heading hierarchy)
@@ -871,7 +871,7 @@ Parse from $ARGUMENTS:
 ## Implementation
 
 ```javascript
-const { promptAnalyzer } = require('${CLAUDE_PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/enhance');
+const { promptAnalyzer } = require('${PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/enhance');
 
 // Parse arguments
 const args = '$ARGUMENTS'.split(' ').filter(Boolean);
@@ -939,3 +939,4 @@ if (applyFixes) {
 - Anti-patterns flagged
 - Clear, actionable report
 - Auto-fix available for HIGH certainty issues
+

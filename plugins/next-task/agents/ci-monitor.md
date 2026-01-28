@@ -42,7 +42,7 @@ const SUBSEQUENT_WAIT = 120000;  // 2 min between checks
 const MAX_WAIT_TIME = 1800000;   // 30 min max
 const MAX_FIX_ITERATIONS = 5;
 
-const workflowState = require('${CLAUDE_PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/state/workflow-state.js');
+const workflowState = require('${PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/state/workflow-state.js');
 const PR_NUMBER = workflowState.readState().pr.number;
 ```
 
@@ -318,3 +318,4 @@ This agent is intentionally lightweight (haiku) because:
 - Simple pattern matching to detect failures
 - Heavy lifting (diagnosis, fixes) delegated to ci-fixer (sonnet)
 - Cost-efficient for potentially long wait loops
+

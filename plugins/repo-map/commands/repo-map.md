@@ -29,7 +29,7 @@ Examples:
 ### 1) Load Repo Map Module
 
 ```javascript
-const pluginPath = '${CLAUDE_PLUGIN_ROOT}'.replace(/\\/g, '/');
+const pluginPath = '${PLUGIN_ROOT}'.replace(/\\/g, '/');
 const repoMap = require(`${pluginPath}/lib/repo-map`);
 ```
 
@@ -134,3 +134,4 @@ if (action === 'init' || action === 'rebuild' || action === 'update') {
 ### Notes
 - <warnings or validation results>
 ```
+

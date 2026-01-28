@@ -15,7 +15,7 @@ and present prioritized recommendations to the user.
 ## Phase 1: Load Policy from State
 
 ```javascript
-const workflowState = require('${CLAUDE_PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/state/workflow-state.js');
+const workflowState = require('${PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/state/workflow-state.js');
 const state = workflowState.readState();
 const policy = state.policy;
 
@@ -63,7 +63,7 @@ The source configuration comes from policy. It can be:
 ### Parse Source Configuration
 
 ```javascript
-const { sources } = require('${CLAUDE_PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib');
+const { sources } = require('${PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib');
 
 // Source can be string or object
 const sourceConfig = typeof policy.taskSource === 'string'
@@ -484,6 +484,20 @@ fi
 Proceeding to worktree setup...
 ```
 
+## Output Format
+
+After the AskUserQuestion selection, respond with:
+
+```markdown
+## Task Selected
+
+**Task**: #<id> - <title>
+**Source**: <source>
+**URL**: <url>
+
+Proceeding to worktree setup...
+```
+
 ## Error Handling
 
 ```bash
@@ -524,3 +538,4 @@ This agent uses **sonnet** because:
 - Custom source handling requires some intelligence
 - Simple enough that opus would be overkill
 - Fast response for interactive task selection
+

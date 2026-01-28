@@ -9,7 +9,7 @@
 const path = require('path');
 const fs = require('fs');
 
-// Resolve lib relative to script location (works with ${CLAUDE_PLUGIN_ROOT})
+// Resolve lib relative to script location (works with ${PLUGIN_ROOT})
 const libPath = path.join(__dirname, '..', 'lib');
 const { runPipeline } = require(path.join(libPath, 'patterns', 'pipeline'));
 
@@ -129,3 +129,4 @@ Examples:
 }
 
 main();
+

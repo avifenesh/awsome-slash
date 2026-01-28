@@ -19,8 +19,8 @@ passes in parallel using Task.
 
 ```javascript
 // Review loop with security limits and stall detection
-const workflowState = require('${CLAUDE_PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/state/workflow-state.js');
-const { getPlatformName } = require('${CLAUDE_PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/platform/state-dir.js');
+const workflowState = require('${PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/state/workflow-state.js');
+const { getPlatformName } = require('${PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/platform/state-dir.js');
 const crypto = require('crypto');
 
 const platform = getPlatformName(process.cwd());
@@ -58,7 +58,7 @@ or the most recent queue in the platform state dir. Otherwise create a new queue
 ```javascript
 const path = require('path');
 const fs = require('fs');
-const { getStateDirPath } = require('${CLAUDE_PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/platform/state-dir.js');
+const { getStateDirPath } = require('${PLUGIN_ROOT}'.replace(/\\/g, '/') + '/lib/platform/state-dir.js');
 
 const resumeRequested = (typeof ARGUMENTS !== 'undefined' && ARGUMENTS.includes('--resume'))
   || process.env.REVIEW_RESUME === 'true';
@@ -809,3 +809,4 @@ This agent uses **opus** because:
 - Must aggregate and prioritize findings intelligently
 - Fixing issues requires understanding code context
 - Iteration decisions need judgment about when to stop
+
