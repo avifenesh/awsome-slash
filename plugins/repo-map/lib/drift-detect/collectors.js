@@ -881,7 +881,6 @@ function shouldSkipFeatureDocPath(filePath, content) {
   const normalized = String(filePath || '').replace(/\\/g, '/').toLowerCase();
   const hasSignal = hasFeatureSignal(content);
   if (normalized.startsWith('agent-docs/') || normalized.includes('/agent-docs/')) return true;
-  if (normalized.startsWith('plans/') || normalized.includes('/plans/')) return true;
   if (normalized.startsWith('checklists/') || normalized.includes('/checklists/')) return true;
   if (normalized.startsWith('references/') || normalized.includes('/references/')) return true;
   if (normalized.startsWith('research/') || normalized.includes('/research/')) return true;
@@ -1702,9 +1701,10 @@ function summarizeFeatureDrift(docs, code) {
     evidenceMap.set(key, item.status || 'missing');
   }
 
-  const features = Array.isArray(docs?.featureDetails) && docs.featureDetails.length > 0
+  const rawFeatures = Array.isArray(docs?.featureDetails) && docs.featureDetails.length > 0
     ? docs.featureDetails
     : (docs?.features || []).map(name => ({ name, normalized: featureExtractor.normalizeText(name) }));
+  const features = rawFeatures.filter(feature => feature && feature.sourceType !== 'plan' && !feature.plan);
 
   let totalWeight = 0;
   let implementedWeight = 0;
@@ -1841,11 +1841,102 @@ function summarizePlanDrift(docs, code, opts) {
     }
   }
 
+  const planFeatures = summarizePlanFeatures(docs, code, opts);
+
   return {
     available: true,
     total: slice.length,
     checked,
     unchecked,
+    implemented,
+    partial,
+    missing,
+    mismatches,
+    planFeatures
+  };
+}
+
+function summarizePlanFeatures(docs, code, opts) {
+  const repoMap = code?.repoMap;
+  if (!repoMap?.available) {
+    return { available: false };
+  }
+
+  const detailFeatures = Array.isArray(docs?.featureDetails) ? docs.featureDetails : [];
+  const planFeatures = detailFeatures.filter(feature => feature && (feature.sourceType === 'plan' || feature.plan));
+  if (planFeatures.length === 0) {
+    return { available: true, total: 0 };
+  }
+
+  const items = [];
+  const seen = new Set();
+  for (const feature of planFeatures) {
+    const text = feature.name || feature.feature || '';
+    if (!text) continue;
+    if (!shouldIncludePlanItem(text)) continue;
+    const normalized = feature.normalized || featureExtractor.normalizeText(text);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    items.push({
+      text,
+      normalized,
+      status: feature.plan?.status || null,
+      phase: feature.plan?.phase || null
+    });
+  }
+
+  if (items.length === 0) {
+    return { available: true, total: 0 };
+  }
+
+  const limit = Math.min(items.length, opts?.repoMap?.maxFeatures || 30);
+  const slice = items.slice(0, limit);
+  const evidence = getRepoMap().findFeatureEvidence(opts.cwd, slice.map(item => item.text), {
+    maxFeatures: limit,
+    maxDefsPerFeature: opts.repoMap?.maxDefsPerFeature,
+    maxRefsPerFeature: opts.repoMap?.maxRefsPerFeature,
+    maxFilesScannedPerDef: opts.repoMap?.maxFilesScannedPerDef,
+    snippetLines: opts.repoMap?.snippetLines
+  });
+
+  const evidenceMap = new Map();
+  if (Array.isArray(evidence?.features)) {
+    for (const item of evidence.features) {
+      const key = item.normalized || featureExtractor.normalizeText(item.feature);
+      if (!key) continue;
+      evidenceMap.set(key, item.status || 'missing');
+    }
+  }
+
+  let implemented = 0;
+  let partial = 0;
+  let missing = 0;
+  const mismatches = {
+    plannedImplemented: [],
+    doneMissing: [],
+    inProgressMissing: []
+  };
+
+  for (const item of slice) {
+    const status = evidenceMap.get(item.normalized) || 'missing';
+    if (status === 'implemented') implemented += 1;
+    else if (status === 'partial') partial += 1;
+    else missing += 1;
+
+    if ((item.status === null || item.status === 'planned') && status === 'implemented' && mismatches.plannedImplemented.length < 10) {
+      mismatches.plannedImplemented.push(item.text);
+    }
+    if (item.status === 'done' && status === 'missing' && mismatches.doneMissing.length < 10) {
+      mismatches.doneMissing.push(item.text);
+    }
+    if (item.status === 'in_progress' && status === 'missing' && mismatches.inProgressMissing.length < 10) {
+      mismatches.inProgressMissing.push(item.text);
+    }
+  }
+
+  return {
+    available: true,
+    total: slice.length,
     implemented,
     partial,
     missing,
