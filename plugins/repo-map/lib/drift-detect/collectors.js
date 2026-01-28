@@ -2543,6 +2543,9 @@ function shouldIncludePlanItem(text) {
   if (/\b(line count|line counts|lines? under)\b/.test(normalized)) return false;
   if (/\b(description includes|additional details|no unnecessary complexity)\b/.test(normalized)) return false;
   if (/\b(diagram|overview|table|definitions?|documentation|docs?)\b/.test(normalized)) return false;
+  if (/\b(references?|docs?)\//.test(normalized) && /\.(md|mdx|rst|txt|adoc|asciidoc)\b/.test(normalized)) return false;
+  if (/^create\s+`?references?\//.test(normalized)) return false;
+  if (/^create\s+`?docs?\//.test(normalized)) return false;
   if (/\bunder\s+\d+\s+lines\b/.test(normalized)) return false;
   if (/^no\s+time-sensitive\b/.test(normalized)) return false;
   if (/^consistent\s+terminology\b/.test(normalized)) return false;
