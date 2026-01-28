@@ -172,7 +172,13 @@ const LOW_SIGNAL_REGEX = [
 ];
 
 const PLAN_NOISE_EXACT = new Set([
-  'location', 'filename', 'reviewed'
+  'location',
+  'filename',
+  'reviewed',
+  'last updated',
+  'status',
+  'branch',
+  'source content'
 ]);
 
 const PLAN_NOISE_PREFIXES = [

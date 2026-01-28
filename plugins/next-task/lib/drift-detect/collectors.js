@@ -12,6 +12,8 @@ const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const featureExtractor = require('./feature-extractor');
+const customHandler = require('../sources/custom-handler');
+const sourceCache = require('../sources/source-cache');
 
 let cachedRepoMap = null;
 function getRepoMap() {
@@ -95,6 +97,30 @@ function execGh(args, options = {}) {
       cwd: options.cwd || DEFAULT_OPTIONS.cwd
     });
     return JSON.parse(result);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Execute glab CLI command safely
+ * @param {string[]} args - Command arguments
+ * @param {Object} options - Execution options
+ * @returns {Object|string|null} Parsed JSON result, raw output, or null
+ */
+function execGlab(args, options = {}) {
+  try {
+    const result = execFileSync('glab', args, {
+      encoding: 'utf8',
+      stdio: 'pipe',
+      timeout: options.timeout || DEFAULT_OPTIONS.timeout,
+      cwd: options.cwd || DEFAULT_OPTIONS.cwd
+    });
+    try {
+      return JSON.parse(result);
+    } catch {
+      return result;
+    }
   } catch {
     return null;
   }
@@ -450,6 +476,23 @@ function isGhAvailable() {
 }
 
 /**
+ * Check if glab CLI is available and authenticated
+ * @returns {boolean} True if glab is ready
+ */
+function isGlabAvailable() {
+  try {
+    execFileSync('glab', ['auth', 'status'], {
+      encoding: 'utf8',
+      stdio: 'pipe',
+      timeout: 5000
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Summarize an issue for analysis (keep essentials, drop verbose body)
  * @param {Object} item - Issue object
  * @returns {Object} Summarized item
@@ -486,6 +529,33 @@ function summarizePR(item) {
   };
 }
 
+function normalizeGitLabIssue(item) {
+  if (!item) return null;
+  return {
+    number: item.iid || item.number || item.id,
+    title: item.title,
+    labels: item.labels || [],
+    milestone: item.milestone?.title || item.milestone || null,
+    createdAt: item.created_at || item.createdAt,
+    updatedAt: item.updated_at || item.updatedAt,
+    body: item.description || item.body || ''
+  };
+}
+
+function normalizeGitLabMR(item) {
+  if (!item) return null;
+  return {
+    number: item.iid || item.number || item.id,
+    title: item.title,
+    labels: item.labels || [],
+    isDraft: item.draft || item.isDraft || false,
+    createdAt: item.created_at || item.createdAt,
+    updatedAt: item.updated_at || item.updatedAt,
+    body: item.description || item.body || '',
+    files: item.files || []
+  };
+}
+
 /**
  * Scan GitHub state: issues, PRs, milestones
  * Replaces issue-scanner.md agent
@@ -498,6 +568,7 @@ function scanGitHubState(options = {}) {
 
   const result = {
     available: false,
+    source: 'github',
     summary: { issueCount: 0, prCount: 0, milestoneCount: 0 },
     issues: [],
     prs: [],
@@ -557,6 +628,205 @@ function scanGitHubState(options = {}) {
     findOverdueMilestones(result);
   }
 
+  return result;
+}
+
+/**
+ * Scan GitLab state: issues, merge requests, milestones
+ *
+ * @param {Object} options - Collection options
+ * @returns {Object} GitLab state data
+ */
+function scanGitLabState(options = {}) {
+  const opts = { ...DEFAULT_OPTIONS, ...options };
+
+  const result = {
+    available: false,
+    source: 'gitlab',
+    summary: { issueCount: 0, prCount: 0, milestoneCount: 0 },
+    issues: [],
+    prs: [],
+    milestones: [],
+    categorized: { bugs: [], features: [], security: [], enhancements: [], other: [] },
+    stale: [],
+    themes: []
+  };
+
+  if (!isGlabAvailable()) {
+    result.error = 'glab CLI not available or not authenticated';
+    return result;
+  }
+
+  result.available = true;
+
+  const issuesRaw = execGlab([
+    'issue', 'list',
+    '--state', 'opened',
+    '--output', 'json'
+  ], opts);
+
+  if (Array.isArray(issuesRaw)) {
+    const normalizedIssues = issuesRaw
+      .map(normalizeGitLabIssue)
+      .filter(Boolean)
+      .slice(0, opts.issueLimit);
+    result.issues = normalizedIssues.map(summarizeIssue);
+    result.summary.issueCount = normalizedIssues.length;
+    categorizeIssues(result, normalizedIssues, opts);
+    findStaleItems(result, normalizedIssues, 90);
+    extractThemes(result, normalizedIssues);
+  } else if (typeof issuesRaw === 'string') {
+    result.raw = issuesRaw.trim();
+  }
+
+  const prsRaw = execGlab([
+    'mr', 'list',
+    '--state', 'opened',
+    '--output', 'json'
+  ], opts);
+
+  if (Array.isArray(prsRaw)) {
+    const normalizedPRs = prsRaw
+      .map(normalizeGitLabMR)
+      .filter(Boolean)
+      .slice(0, opts.prLimit);
+    result.prs = normalizedPRs.map(summarizePR);
+    result.summary.prCount = normalizedPRs.length;
+  } else if (typeof prsRaw === 'string') {
+    result.raw = result.raw || prsRaw.trim();
+  }
+
+  const milestonesRaw = execGlab([
+    'milestone', 'list',
+    '--state', 'active',
+    '--output', 'json'
+  ], opts);
+
+  if (Array.isArray(milestonesRaw)) {
+    result.milestones = milestonesRaw;
+    result.summary.milestoneCount = result.milestones.length;
+    findOverdueMilestones(result);
+  }
+
+  return result;
+}
+
+/**
+ * Scan local task files (tasks.md, TODO.md, PLAN.md)
+ *
+ * @param {Object} options - Collection options
+ * @returns {Object} Local task data
+ */
+function scanLocalTasks(options = {}) {
+  const opts = { ...DEFAULT_OPTIONS, ...options };
+  const basePath = opts.cwd;
+
+  const result = {
+    available: false,
+    source: 'local',
+    summary: { issueCount: 0, prCount: 0, milestoneCount: 0 },
+    files: [],
+    issues: [],
+    prs: [],
+    milestones: [],
+    checkboxes: { total: 0, checked: 0, unchecked: 0, items: [] },
+    plans: []
+  };
+
+  const candidates = [
+    'tasks.md',
+    'TASKS.md',
+    'todo.md',
+    'TODO.md',
+    'PLAN.md',
+    'plan.md'
+  ];
+
+  for (const filePath of candidates) {
+    const content = safeReadFile(filePath, basePath);
+    if (!content) continue;
+    result.available = true;
+    result.files.push(filePath);
+    extractCheckboxes(result, content);
+    extractPlans(result, content);
+  }
+
+  if (result.checkboxes.items.length > 0) {
+    result.issues = result.checkboxes.items.map((item, index) => ({
+      number: index + 1,
+      title: item.text,
+      labels: [],
+      createdAt: null,
+      updatedAt: null
+    }));
+    result.summary.issueCount = result.issues.length;
+  }
+
+  return result;
+}
+
+/**
+ * Scan custom task sources (CLI or file)
+ *
+ * @param {Object} options - Collection options
+ * @returns {Object} Custom source data
+ */
+function scanCustomState(options = {}) {
+  const opts = { ...DEFAULT_OPTIONS, ...options };
+  const custom = opts.issueSource;
+
+  const result = {
+    available: false,
+    source: 'custom',
+    summary: { issueCount: 0, prCount: 0, milestoneCount: 0 },
+    issues: [],
+    prs: [],
+    milestones: [],
+    config: custom || null
+  };
+
+  if (!custom || custom.source !== 'custom') {
+    result.error = 'Custom source not configured';
+    return result;
+  }
+
+  if (custom.type === 'file') {
+    const content = safeReadFile(custom.tool, opts.cwd);
+    if (!content) {
+      result.error = `Custom file not found: ${custom.tool}`;
+      return result;
+    }
+    result.available = true;
+    result.files = [custom.tool];
+    result.checkboxes = { total: 0, checked: 0, unchecked: 0, items: [] };
+    result.plans = [];
+    extractCheckboxes(result, content);
+    extractPlans(result, content);
+    if (result.checkboxes.items.length > 0) {
+      result.issues = result.checkboxes.items.map((item, index) => ({
+        number: index + 1,
+        title: item.text,
+        labels: [],
+        createdAt: null,
+        updatedAt: null
+      }));
+      result.summary.issueCount = result.issues.length;
+    }
+    return result;
+  }
+
+  if (custom.type === 'cli') {
+    const cached = sourceCache.getToolCapabilities(custom.tool);
+    const capabilities = custom.capabilities || cached || customHandler.probeCLI(custom.tool);
+    result.capabilities = capabilities;
+    result.available = !!capabilities?.available;
+    if (!result.available) {
+      result.error = `Custom CLI not available: ${custom.tool}`;
+    }
+    return result;
+  }
+
+  result.error = `Custom source type not supported: ${custom.type || 'unknown'}`;
   return result;
 }
 
@@ -1594,6 +1864,7 @@ function findImplementedFeatures(result, basePath) {
 function collectAllData(options = {}) {
   const opts = { ...DEFAULT_OPTIONS, ...options };
   const sources = Array.isArray(opts.sources) ? opts.sources : DEFAULT_OPTIONS.sources;
+  const issueSource = opts.issueSource?.source;
 
   const data = {
     timestamp: new Date().toISOString(),
@@ -1604,7 +1875,26 @@ function collectAllData(options = {}) {
   };
 
   // Collect from each enabled source
-  if (sources.includes('github')) {
+  if (issueSource) {
+    if (issueSource === 'gitlab') data.github = scanGitLabState(opts);
+    else if (issueSource === 'local') data.github = scanLocalTasks(opts);
+    else if (issueSource === 'custom') data.github = scanCustomState(opts);
+    else if (issueSource === 'other') {
+      data.github = {
+        available: false,
+        source: 'other',
+        description: opts.issueSource?.description || ''
+      };
+    } else {
+      data.github = scanGitHubState(opts);
+    }
+  } else if (sources.includes('gitlab')) {
+    data.github = scanGitLabState(opts);
+  } else if (sources.includes('local')) {
+    data.github = scanLocalTasks(opts);
+  } else if (sources.includes('custom')) {
+    data.github = scanCustomState(opts);
+  } else if (sources.includes('github')) {
     data.github = scanGitHubState(opts);
   }
 
@@ -2200,9 +2490,13 @@ function listSubprojectReadmes(basePath, limit) {
 module.exports = {
   DEFAULT_OPTIONS,
   scanGitHubState,
+  scanGitLabState,
+  scanLocalTasks,
+  scanCustomState,
   analyzeDocumentation,
   scanCodebase,
   collectAllData,
   isGhAvailable,
+  isGlabAvailable,
   isPathSafe
 };

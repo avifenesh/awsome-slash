@@ -159,6 +159,10 @@ function extractFeaturesFromContent(content, filePath, options) {
   let optionSection = false;
   let skipBlock = false;
   let skipBlockBlankAllowance = 0;
+
+  if (isPlanDoc) {
+    planContext = { active: true, status: 'planned', phase: null, heading: null };
+  }
   let seenHeading = false;
   let headingCount = 0;
   let inCodeBlock = false;
@@ -239,6 +243,8 @@ function extractFeaturesFromContent(content, filePath, options) {
         const planInfo = parsePlanHeading(title);
         if (planInfo.active) {
           planContext = planInfo;
+        } else if (planContext.active) {
+          planContext = { ...planContext, heading: title };
         }
       }
       if (isFeatureDoc && level >= 2 && !skipSection) {
@@ -323,6 +329,7 @@ function extractFeaturesFromContent(content, filePath, options) {
         }
         candidate = stripLeadingVerb(candidate);
         if (isCodePathCandidate(candidate)) continue;
+        if (containsPathLikeToken(candidate)) continue;
         if (isExampleLine(line, candidate)) continue;
         if (isFormulaLine(line, candidate)) continue;
         if (isConfigKeyLine(candidate, line)) continue;
@@ -357,6 +364,10 @@ function extractFeaturesFromContent(content, filePath, options) {
         if (inline) {
           const inlineItems = Array.isArray(inline) ? inline : [inline];
           for (const item of inlineItems) {
+            if (isPlanDoc && planContext.active) {
+              if (isPlanNoiseLine(item)) continue;
+              if (containsPathLikeToken(item)) continue;
+            }
             const record = buildFeatureRecord(item, filePath, i + 1, line, options);
             if (record) {
               features.push(record);
@@ -396,6 +407,10 @@ function extractFeaturesFromContent(content, filePath, options) {
           if (modeFeature && isLowSignalText(normalizeText(boldLabel))) {
             candidate = modeFeature;
           }
+          if (isPlanDoc && planContext.active) {
+            if (isPlanNoiseLine(candidate)) continue;
+            if (containsPathLikeToken(candidate)) continue;
+          }
           const record = buildFeatureRecord(candidate, filePath, i + 1, line, options);
           if (record) {
             features.push(record);
@@ -407,6 +422,10 @@ function extractFeaturesFromContent(content, filePath, options) {
           if (inline) {
             const inlineItems = Array.isArray(inline) ? inline : [inline];
             for (const item of inlineItems) {
+              if (isPlanDoc && planContext.active) {
+                if (isPlanNoiseLine(item)) continue;
+                if (containsPathLikeToken(item)) continue;
+              }
               const record = buildFeatureRecord(item, filePath, i + 1, line, options);
               if (record) {
                 features.push(record);
@@ -463,6 +482,7 @@ function extractFeaturesFromContent(content, filePath, options) {
         }
         candidate = stripLeadingVerb(candidate);
         if (isCodePathCandidate(candidate)) continue;
+        if (containsPathLikeToken(candidate)) continue;
         if (isExampleLine(line, candidate)) continue;
         if (isFormulaLine(line, candidate)) continue;
         if (isConfigKeyLine(candidate, line)) continue;
@@ -1303,7 +1323,10 @@ function buildFeatureRecord(name, filePath, lineNumber, contextLine, options) {
   if (normalized.endsWith(' with')) return null;
   if (normalized.startsWith('plugin ') && normalized.split(' ').length <= 2) return null;
   if (normalized.startsWith('plugin ') && /(enable|remove|disable)/.test(normalized)) return null;
-  if (sourceType === 'plan' && (isInstructionalText(normalized) || isPlanInstruction(normalized))) return null;
+  if (sourceType === 'plan' && (isInstructionalText(normalized) || isPlanInstruction(normalized))) {
+    const isListItem = /^\s*(?:[-*+]|\d+\.)/.test(contextLine || '');
+    if (!isListItem) return null;
+  }
   if (sourceType === 'plan' && /^(manual test|test flow)/.test(normalized)) return null;
   if ((sourceType === 'docs' || sourceType === 'doc') && isInstructionalText(normalized)) {
     const allowDocShould = /^\s*(?:[-*+]|\d+\.)\s+/.test(contextLine || '')
@@ -1470,7 +1493,8 @@ function trimFeatureName(text, maxLength) {
 function detectSourceType(filePath) {
   const normalized = String(filePath || '').replace(/\\/g, '/').toLowerCase();
   const base = normalized.split('/').pop() || '';
-  if (normalized.includes('/plans/') || base.includes('plan') || normalized.includes('/roadmap/')) return 'plan';
+  if (/(^|\/)plans?\//.test(normalized) || /(^|\/)roadmap\//.test(normalized)) return 'plan';
+  if (/^plan(\.|-|_|\b)/.test(base) || /^roadmap(\.|-|_|\b)/.test(base)) return 'plan';
   if (/(^|\/)docs\//.test(normalized)) return 'docs';
   if (/(^|\/)examples?\//.test(normalized)) return 'example';
   if (base.startsWith('readme.')) {
@@ -1700,8 +1724,8 @@ function isFeatureDocPath(filePath) {
 
 function isPlanDocPath(filePath) {
   const normalized = String(filePath || '').replace(/\\/g, '/').toLowerCase();
-  if (normalized.includes('/plans/') || normalized.includes('/roadmap/')) return true;
-  return /(^|\/)(plan|roadmap|milestones?|phases?)(\.md)?$/i.test(normalized);
+  if (/(^|\/)plans?\//.test(normalized) || /(^|\/)roadmap\//.test(normalized)) return true;
+  return /(^|\/)(plan|roadmap|milestones?|phases?)(\.[a-z0-9]+)?$/i.test(normalized);
 }
 
 function isFeatureLeadLine(line) {
@@ -1729,6 +1753,14 @@ function isCodePathCandidate(text) {
   }
   if (/^[\w./-]+\.[a-z0-9]{1,5}$/i.test(cleaned)) return true;
   return false;
+}
+
+function containsPathLikeToken(text) {
+  const value = String(text || '').trim();
+  if (!value) return false;
+  const cleaned = value.replace(/`/g, '');
+  const pathToken = /(^|\s)(\.{0,2}[\\/])?([\w.-]+[\\/])+[\w.-]+\.[a-z0-9]{1,5}\b/i;
+  return pathToken.test(cleaned);
 }
 
 function splitCommaFeatures(text) {
@@ -1821,9 +1853,12 @@ function isPlanNoiseLine(text) {
   for (const prefix of PLAN_NOISE_PREFIXES) {
     if (normalized.startsWith(prefix)) return true;
   }
+  if (/^(agents?|commands?|skills?)\b/.test(normalized) && /\([^)]+\)/.test(String(text))) return true;
   if (/^task\s+\d+\b/.test(normalized)) return true;
   if (normalized.startsWith('focus on ')) return true;
   if (normalized.startsWith('final ')) return true;
+  if (/^reviewed\b/.test(normalized)) return true;
+  if (/^created\b/.test(normalized)) return true;
   if (/^(improve|update)\b/.test(normalized) &&
     /(documentation|formatting|organization|guide|dashboard|investigation)/.test(normalized)) {
     return true;
@@ -1843,6 +1878,9 @@ function isPlanNoiseLine(text) {
     /(documented|benchmark|examples?|files?|paths?|dependencies|suppression)/.test(normalized)) {
     return true;
   }
+  if (normalized.startsWith('other ') && /(commands?|documents?|files?|repos?)/.test(normalized)) return true;
+  if (normalized.includes('line counts')) return true;
+  if (/\blines?\s+\d+/.test(normalized)) return true;
   if (/\b(guide|dashboard|investigation|results)\b/.test(normalized)) return true;
   if (/\b(correct|accurate|format|formats|import statements|file paths)\b/.test(normalized)) return true;
   return false;

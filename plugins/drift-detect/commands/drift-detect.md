@@ -1,6 +1,6 @@
 ---
 description: Deep repository analysis to realign project plans with actual code reality
-argument-hint: "[--sources github,docs,code] [--depth quick|thorough] [--output file|display|both] [--file PATH]"
+argument-hint: "[--sources github,gitlab,local,custom,docs,code] [--depth quick|thorough] [--output file|display|both] [--file PATH]"
 allowed-tools: Bash(git:*), Bash(gh:*), Bash(npm:*), Read, Glob, Grep, Task, Write, AskUserQuestion
 ---
 
@@ -19,7 +19,7 @@ Data collection is pure JavaScript. Only semantic analysis uses Opus (agent load
 ## Arguments
 
 Parse from $ARGUMENTS:
-- `--sources`: Sources to scan (default: github,docs,code)
+- `--sources`: Sources to scan (default: github,docs,code; supports gitlab/local/custom)
 - `--depth`: quick or thorough (default: thorough)
 - `--output`: file, display, or both (default: both)
 - `--file`: Output path (default: drift-detect-report.md)
@@ -30,6 +30,7 @@ Parse from $ARGUMENTS:
 const pluginPath = '${CLAUDE_PLUGIN_ROOT}'.replace(/\\/g, '/');
 const collectors = require(`${pluginPath}/lib/drift-detect/collectors.js`);
 const repoMap = require(`${pluginPath}/lib/repo-map`);
+const { sources } = require(`${pluginPath}/lib`);
 
 // Repo map is optional. If ast-grep exists, build the map. If not, ask whether to install.
 const repoRoot = process.cwd();
@@ -109,12 +110,69 @@ for (let i = 0; i < args.length; i++) {
   else if (args[i] === '--file' && args[i+1]) options.file = args[++i];
 }
 
+// Select issue tracker source (GitHub/GitLab/Local/Custom)
+if (options.sources.includes('github') || options.sources.includes('gitlab')) {
+  const { questions } = sources.getPolicyQuestions();
+  const sourceQuestion = [questions[0]];
+  const sourceResponse = await AskUserQuestion({ questions: sourceQuestion });
+  const sourceAnswer = sourceResponse?.[0]?.[0];
+
+  let custom = {};
+  if (sources.needsCustomFollowUp(sourceAnswer)) {
+    const typeResponse = await AskUserQuestion(sources.getCustomTypeQuestions());
+    const typeAnswer = typeResponse?.[0]?.[0];
+    const typeMap = {
+      'CLI Tool': 'cli',
+      'MCP Server': 'mcp',
+      'Skill/Plugin': 'skill',
+      'File Path': 'file'
+    };
+    const typeInternal = typeMap[typeAnswer] || 'cli';
+    const nameResponse = await AskUserQuestion(sources.getCustomNameQuestion(typeInternal));
+    const nameAnswer = nameResponse?.[0]?.[0];
+    custom = { type: typeAnswer, name: nameAnswer };
+  }
+
+  if (sources.needsOtherDescription(sourceAnswer)) {
+    const otherResponse = await AskUserQuestion({
+      questions: [{
+        header: 'Other',
+        question: 'Describe the source you want me to use.',
+        options: [],
+        multiSelect: false
+      }]
+    });
+    custom = { ...custom, description: otherResponse?.[0]?.[0] };
+  }
+
+  const policy = sources.parseAndCachePolicy({
+    source: sourceAnswer,
+    priority: 'All',
+    stopPoint: 'Merged',
+    custom
+  });
+  options.issueSource = policy.taskSource;
+
+  if (options.issueSource?.source && options.issueSource.source !== 'github') {
+    options.sources = options.sources.filter(src => src !== 'github');
+    if (!options.sources.includes(options.issueSource.source)) {
+      options.sources.push(options.issueSource.source);
+    }
+  }
+}
+
 console.log(`## Starting Reality Check Scan\n\n**Sources**: ${options.sources.join(', ')}\n**Depth**: ${options.depth}\n`);
 
 const collectedData = await collectors.collectAllData(options);
 
-if (options.sources.includes('github') && collectedData.github && !collectedData.github.available) {
-  console.log(`Note: GitHub CLI not available. Run \`gh auth login\` to enable.`);
+if (collectedData.github && !collectedData.github.available) {
+  if (collectedData.github.source === 'gitlab') {
+    console.log(`Note: GitLab CLI not available. Run \`glab auth login\` to enable.`);
+  } else if (collectedData.github.source === 'github') {
+    console.log(`Note: GitHub CLI not available. Run \`gh auth login\` to enable.`);
+  } else if (collectedData.github.source === 'custom') {
+    console.log(`Note: Custom source unavailable. Verify your configuration or tool.`);
+  }
 }
 
 console.log(`### Data Collection Complete\n`);
@@ -131,7 +189,7 @@ await Task({
 
 ## Collected Data
 
-### GitHub State
+### Issue Tracker State
 \`\`\`json
 ${JSON.stringify(collectedData.github, null, 2)}
 \`\`\`
@@ -165,7 +223,7 @@ console.log(`\n## Reality Check Complete\n\nRun \`/drift-detect --depth quick\` 
 
 | Flag | Values | Default |
 |------|--------|---------|
-| --sources | github,docs,code | all |
+| --sources | github,gitlab,local,custom,docs,code | all |
 | --depth | quick, thorough | thorough |
 | --output | file, display, both | both |
 | --file | path | drift-detect-report.md |

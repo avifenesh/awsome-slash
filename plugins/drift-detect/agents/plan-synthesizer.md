@@ -22,7 +22,7 @@ You perform deep semantic analysis on project data collected by JavaScript colle
 ## Input Format
 
 You receive collected data as structured JSON:
-- `github`: Issues, PRs, milestones, categorized items, stale items
+- `github`: Issue tracker state (GitHub/GitLab/custom), issues, PRs/MRs, milestones, stale items
 - `docs`: Documentation analysis, checkboxes, features, plans
 - `code`: Directory structure, frameworks, health indicators, repo map summary
 </input-format>
